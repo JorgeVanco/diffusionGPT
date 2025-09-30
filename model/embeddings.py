@@ -18,6 +18,9 @@ class TokenEmbeddings(nn.Module):
     def add_noise_embeddings(embeddings: Tensor, noise_level: float) -> Tensor:
         noise = torch.randn_like(embeddings) * noise_level
         return embeddings + noise
+    
+    def interpolate_embeddings(self, logits: Tensor) -> Tensor:
+        return F.softmax(logits, dim=-1) @ self.token_embeddings.weight
 
     def forward(self, input_ids: Tensor) -> Tensor:
         token_embeds = self.token_embeddings(input_ids)
