@@ -34,6 +34,18 @@ class DiffusionTransformer(nn.Module):
         )
 
     def forward(self, x: Tensor, t: Tensor) -> Tensor:
+        # Preconditioning from Karras et al. (2022)
+        # See https://arxiv.org/abs/2206.00364 for details
+        # But using only preconditioning on input embeddings as in CDCD paper
+        # sigma_data = 1
+        # c_skip = sigma_data / (t**2 + sigma_data**2)
+        # c_out = t * sigma_data / (t**2 + sigma_data**2)**0.5
+        c_in = 1 / (t**2 + 1)**0.5
+        c_noise = torch.log(t) / 4
+        
+        # x_skip = c_skip.view(-1, 1, 1) * x
+        x = c_in.view(-1, 1, 1) * x
+        t = c_noise
         
         # x = self.token_embeddings(x)
         c = self.time_embeddings(t)
