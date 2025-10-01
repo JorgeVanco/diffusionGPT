@@ -4,6 +4,10 @@ from torch import Tensor
 import torch.nn as nn
 import torch.nn.functional as F
 
+from .embeddings import TimeEmbeddings, TokenEmbeddings
+
+# Reference implementation of DiT: https://github.com/facebookresearch/DiT/blob/main/models.py#L19
+
 @dataclass
 class TransformerConfig:
     vocab_size: int = 32000
@@ -11,25 +15,42 @@ class TransformerConfig:
     num_heads: int = 8
     num_layers: int = 8
 
-class Transformer(nn.Module):
+class DiffusionTransformer(nn.Module):
     def __init__(self, vocab_size: int, embed_dim: int, num_heads: int, num_layers: int) -> None:
-        super(Transformer, self).__init__()
+        super(DiffusionTransformer, self).__init__()
+
+        # self.token_embeddings = TokenEmbeddings(vocab_size, embed_dim)
+        self.time_embeddings = TimeEmbeddings(embed_dim, t_min=1.0, t_max=100.0)
+
         self.layers = nn.ModuleList([
-            TransformerBlock(embed_dim, num_heads) for _ in range(num_layers)
+            DiTBlock(embed_dim, num_heads) for _ in range(num_layers)
         ])
         self.layernorm = nn.LayerNorm(embed_dim)
         self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
+        
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(embed_dim, 2 * embed_dim, bias=True)
+        )
 
-    def forward(self, x: Tensor) -> Tensor:
+    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+        
+        # x = self.token_embeddings(x)
+        c = self.time_embeddings(t)
+        
         for layer in self.layers:
-            x = layer(x)
-        x = self.layernorm(x)
+            x = layer(x, c)
+        shift, scale = self.adaLN_modulation(c).chunk(2, dim=1)
+        x = modulate(self.layernorm(x), shift, scale)
         x = self.lm_head(x)
         return x
 
-class TransformerBlock(nn.Module):
+def modulate(x: Tensor, shift: Tensor, scale: Tensor) -> Tensor:
+    return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
+
+class DiTBlock(nn.Module):
     def __init__(self, embed_dim, num_heads) -> None:
-        super(TransformerBlock, self).__init__()
+        super(DiTBlock, self).__init__()
         self.attention = MultiHeadSelfAttention(embed_dim, num_heads)
         self.ffn = nn.Sequential(
             nn.Linear(embed_dim, 4 * embed_dim),
@@ -38,10 +59,16 @@ class TransformerBlock(nn.Module):
         )
         self.layernorm1 = nn.LayerNorm(embed_dim)
         self.layernorm2 = nn.LayerNorm(embed_dim)
+        
+        self.adaLN_modulation = nn.Sequential(
+            nn.SiLU(),
+            nn.Linear(embed_dim, 6 * embed_dim, bias=True)
+        )
 
-    def forward(self, x: Tensor) -> Tensor:
-        x = self.attention(self.layernorm1(x)) + x
-        x = self.ffn(self.layernorm2(x)) + x
+    def forward(self, x: Tensor, c: Tensor) -> Tensor:
+        shift_msa, scale_msa, gate_msa, shift_mlp, scale_mlp, gate_mlp = self.adaLN_modulation(c).chunk(6, dim=1)
+        x = x + gate_msa.unsqueeze(1) * self.attention(modulate(self.layernorm1(x), shift_msa, scale_msa))
+        x = x + gate_mlp.unsqueeze(1) * self.ffn(modulate(self.layernorm2(x), shift_mlp, scale_mlp))
         return x
 
 def apply_rope(x: Tensor, seq_len: int, dim: int) -> Tensor:
@@ -101,12 +128,16 @@ class Rotary(nn.Module):
 
 if __name__ == "__main__":
     config = TransformerConfig()
-    model = Transformer(
+    model = DiffusionTransformer(
         vocab_size=config.vocab_size,
         embed_dim=config.embed_dim,
         num_heads=config.num_heads,
         num_layers=config.num_layers
     )
-    x = torch.randn(1, 16, config.embed_dim)
-    out = model(x)
-    print(out.shape)  # Expected output shape: (1, 16, vocab_size)
+    b = 4
+    indices = torch.randint(0, config.vocab_size, (b, 16))
+    token_embeddings = TokenEmbeddings(config.vocab_size, config.embed_dim)
+    x = token_embeddings(indices)
+    t = torch.randn(b)
+    out = model(x, t)
+    print(out.shape)  # Expected output shape: (b, 16, vocab_size)
