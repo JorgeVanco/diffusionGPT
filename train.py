@@ -4,10 +4,13 @@ from torch.utils.data import DataLoader
 import torch
 import torch.nn as nn
 import torch.optim as optim
+from tqdm import tqdm
+
 from model.embeddings import TokenEmbeddings, EmbeddingsConfig
 from model.transformer import DiffusionTransformer, TransformerConfig
+from model.cdcd import CDCD
 from model.loss import cdcd_loss
-
+from model.scheduler import Scheduler
 
 def main() -> None:
     # Load dataset and tokenizer
@@ -19,55 +22,91 @@ def main() -> None:
     
     tokenized_datasets = dataset.map(tokenize_function, batched=True)
     tokenized_datasets.set_format(type='torch') #type:ignore
-    dataloader = DataLoader(tokenized_datasets, batch_size=32, shuffle=True) #type:ignore
+    dataloader = DataLoader(tokenized_datasets, batch_size=32, shuffle=False) #type:ignore
     
     # Model configuration
+    embeddings_config = EmbeddingsConfig(
+        vocab_size=tokenizer.vocab_size,
+        embed_dim=256
+    )
+    
     config = TransformerConfig(
-        vocab_size=EmbeddingsConfig.vocab_size,
-        embed_dim=EmbeddingsConfig.embed_dim,
+        vocab_size=embeddings_config.vocab_size,
+        embed_dim=embeddings_config.embed_dim,
         num_heads=8,
-        num_layers=6
+        num_layers=6,
+        seq_len=64
     )
     
+    model = CDCD(config)
+    scheduler = Scheduler(tmin=0.01,tmax=100)
     # Initialize model, embeddings, optimizer, and loss function
-    model = DiffusionTransformer(
-        vocab_size=config.vocab_size,
-        embed_dim=config.embed_dim,
-        num_heads=config.num_heads,
-        num_layers=config.num_layers
-    )
-    token_embeddings = TokenEmbeddings(config.vocab_size, config.embed_dim)
+    # model = DiffusionTransformer(
+    #     vocab_size=config.vocab_size,
+    #     embed_dim=config.embed_dim,
+    #     num_heads=config.num_heads,
+    #     num_layers=config.num_layers,
+    #     seq_len=config.seq_len
+    # )
+    print(f"Number of parameters in model: {sum(p.numel() for p in model.parameters() if p.requires_grad):,}")
+    # token_embeddings = TokenEmbeddings(config.vocab_size, config.embed_dim)
     
-    optimizer = optim.Adam(model.parameters(), lr=1e-4)
+    optimizer = optim.Adam(model.parameters(), lr=5e-3)
+    
+    print("Number of batches per epoch:", len(dataloader))
+    
+    device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
+    model = model.to(device)
+    # token_embeddings = token_embeddings.to(device)
     
     # Training loop
     model.train()
-    for epoch in range(3):  # Train for 3 epochs
-        for batch in dataloader:
-            input_ids = torch.tensor(batch['input_ids'])
-            
+    for epoch in range(100):  # Reduced to 100 epochs
+        for batch_num, batch in enumerate(dataloader):
+            input_ids = batch['input_ids'].to(device)
+            # print("Input IDs:", input_ids[0])
             optimizer.zero_grad()
-            
-            # Get token embeddings
-            embeddings = token_embeddings(input_ids)
-            
-            # Add noise to embeddings
-            t = model.time_embeddings.sample_t(embeddings.size(0))
-            noisy_embeddings = embeddings + torch.rand_like(embeddings) * t.view(-1, 1, 1)
-            
-            
-            # Forward pass through the transformer
-            logits = model(noisy_embeddings, t)
+
+            mask = torch.ones_like(input_ids).to(device)
+            mask[:, :32] = 0
+            logits = model.train_forward(input_ids, mask, scheduler)
 
             # Compute loss
-            loss = cdcd_loss(logits.view(-1, logits.size(-1)), input_ids.view(-1))
+            loss = cdcd_loss(logits, input_ids)
             
             # Backward pass and optimization step
             loss.backward()
             optimizer.step()
             
-            print(f"Epoch {epoch}, Loss: {loss.item()}")
-            
+            if batch_num % 500 == 0 or batch_num == len(dataloader) - 1:
+                model.eval()
+                with torch.no_grad():
+                    predicted_ids = model.generate(batch_size=4, steps=1000, scheduler=scheduler, input_ids=input_ids[0].unsqueeze(0).expand(4, -1), mask=mask[0].unsqueeze(0).expand(4, -1))
+                    print("Generated logits shape:", predicted_ids.shape)
+                    # logits = model.lm_head(generated_logits)
+                    # predicted_ids = torch.argmax(logits, dim=-1)
+                    for i in range(predicted_ids.size(0)):
+                        # Split into conditioned and generated parts based on mask
+                        conditioned_part = predicted_ids[i][mask[0] == 0]
+                        generated_part = predicted_ids[i][mask[0] == 1]
+                        
+                        conditioned_text = tokenizer.decode(conditioned_part, skip_special_tokens=True)
+                        generated_text = tokenizer.decode(generated_part, skip_special_tokens=True)
+                        
+                        print(f"Generated Text {i+1}: {conditioned_text}\033[92m{generated_text}\033[0m")
+                    
+                model.train()
 
+                print(f"Epoch {epoch}, Loss: {loss.item():.4f}")
+
+
+        torch.save({
+            "model_state_dict": model.state_dict(),
+            # "token_embeddings_state_dict": token_embeddings.state_dict(),
+            "optimizer_state_dict": optimizer.state_dict(),
+        }, "model_checkpoint.pth")
+    print("Training complete.")
+
+    
 if __name__ == "__main__":
     main()

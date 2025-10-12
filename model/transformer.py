@@ -14,16 +14,21 @@ class TransformerConfig:
     embed_dim: int = 1024
     num_heads: int = 8
     num_layers: int = 8
+    seq_len: int = 64
+
 
 class DiffusionTransformer(nn.Module):
-    def __init__(self, vocab_size: int, embed_dim: int, num_heads: int, num_layers: int) -> None:
+    def __init__(self, vocab_size: int, embed_dim: int, num_heads: int, num_layers: int, seq_len: int) -> None:
         super(DiffusionTransformer, self).__init__()
-
+        self.seq_len = seq_len
+        self.embed_dim = embed_dim
         # self.token_embeddings = TokenEmbeddings(vocab_size, embed_dim)
-        self.time_embeddings = TimeEmbeddings(embed_dim, t_min=1.0, t_max=100.0)
-
+        self.time_embeddings = TimeEmbeddings(embed_dim, t_min=0.1, t_max=10.0)
+        
+        self.rotary = Rotary(embed_dim // num_heads, seq_len)
+        self.embedding_proj = nn.Linear(embed_dim*3, embed_dim)
         self.layers = nn.ModuleList([
-            DiTBlock(embed_dim, num_heads) for _ in range(num_layers)
+            DiTBlock(embed_dim, num_heads, self.rotary) for _ in range(num_layers)
         ])
         self.layernorm = nn.LayerNorm(embed_dim)
         self.lm_head = nn.Linear(embed_dim, vocab_size, bias=False)
@@ -33,13 +38,16 @@ class DiffusionTransformer(nn.Module):
             nn.Linear(embed_dim, 2 * embed_dim, bias=True)
         )
 
-    def forward(self, x: Tensor, t: Tensor) -> Tensor:
+    def forward(self, x: Tensor, clean_embeddings: Tensor, mask: Tensor, t: Tensor) -> Tensor:
         # Preconditioning from Karras et al. (2022)
         # See https://arxiv.org/abs/2206.00364 for details
         # But using only preconditioning on input embeddings as in CDCD paper
         # sigma_data = 1
         # c_skip = sigma_data / (t**2 + sigma_data**2)
         # c_out = t * sigma_data / (t**2 + sigma_data**2)**0.5
+        x = torch.cat((x, clean_embeddings, mask), dim=-1)
+        x = self.embedding_proj(x)
+        
         c_in = 1 / (t**2 + 1)**0.5
         c_noise = torch.log(t) / 4
         
@@ -57,13 +65,35 @@ class DiffusionTransformer(nn.Module):
         x = self.lm_head(x)
         return x
 
+class Rotary(nn.Module):
+    def __init__(self, dim: int, max_seq_len: int) -> None:
+        super().__init__()
+
+        angular_freq = (1 / 1024) ** torch.linspace(0, 1, steps=dim//4, dtype=torch.float32)
+        angular_freq = torch.cat([angular_freq, angular_freq.new_zeros(dim//4)])
+        t = torch.arange(max_seq_len, dtype=torch.float32)
+        theta = torch.einsum("i,j -> ij", t, angular_freq)
+        self.cos = nn.Buffer(theta.cos(), persistent=False)
+        self.sin = nn.Buffer(theta.sin(), persistent=False)
+
+    def forward(self, x_BTHD: Tensor) -> Tensor:
+        assert self.cos.size(0) >= x_BTHD.size(-3)
+        cos, sin = self.cos[None, :x_BTHD.size(-3), None, :], self.sin[None, :x_BTHD.size(-3), None, :]
+        x1, x2 = x_BTHD.to(dtype=torch.float32).chunk(2, dim=-1)
+        y1 = x1 * cos + x2 * sin
+        y2 = x1 * (-sin) + x2 * cos
+        return torch.cat((y1, y2), 3).type_as(x_BTHD)
+    
+    
 def modulate(x: Tensor, shift: Tensor, scale: Tensor) -> Tensor:
     return x * (1 + scale.unsqueeze(1)) + shift.unsqueeze(1)
 
+
 class DiTBlock(nn.Module):
-    def __init__(self, embed_dim, num_heads) -> None:
+    def __init__(self, embed_dim, num_heads, rotary: Rotary) -> None:
         super(DiTBlock, self).__init__()
-        self.attention = MultiHeadSelfAttention(embed_dim, num_heads)
+        self.rotary = rotary
+        self.attention = MultiHeadSelfAttention(embed_dim, num_heads, rotary)
         self.ffn = nn.Sequential(
             nn.Linear(embed_dim, 4 * embed_dim),
             nn.GELU(approximate='tanh'),
@@ -84,30 +114,33 @@ class DiTBlock(nn.Module):
         return x
 
 def apply_rope(x: Tensor, seq_len: int, dim: int) -> Tensor:
-    position = torch.arange(seq_len, dtype=torch.float).unsqueeze(1)
-    div_term = torch.exp(torch.arange(0, dim, 2).float() * (-torch.log(torch.tensor(10000.0)) / dim))
-    pe = torch.zeros(seq_len, 1, dim)
+    position = torch.arange(seq_len, dtype=torch.float, device=x.device).unsqueeze(1)
+    div_term = torch.exp(torch.arange(0, dim, 2, device=x.device).float() * (-torch.log(torch.tensor(10000.0, device=x.device)) / dim))
+    pe = torch.zeros(seq_len, 1, dim, device=x.device)
     pe[:, 0, 0::2] = torch.sin(position * div_term)
     pe[:, 0, 1::2] = torch.cos(position * div_term)
     x = x + pe
     return x
     
 class MultiHeadSelfAttention(nn.Module):
-    def __init__(self, embed_dim, num_heads) -> None:
+    def __init__(self, embed_dim, num_heads, rotary: Rotary) -> None:
         super(MultiHeadSelfAttention, self).__init__()
         self.qkv_proj = nn.Linear(embed_dim, embed_dim * 3)
         self.out_proj = nn.Linear(embed_dim, embed_dim)
         self.num_heads = num_heads
+        self.rotary = rotary
 
     def forward(self, x: Tensor) -> Tensor:
         qkv = self.qkv_proj(x)
         q, k, v = qkv.chunk(3, dim=-1)
         
-        q, k = apply_rope(q, x.size(0), q.size(-1)), apply_rope(k, x.size(0), k.size(-1))
+        # q, k = apply_rope(q, x.size(0), q.size(-1)), apply_rope(k, x.size(0), k.size(-1))
         
         q = q.view(x.size(0), -1, self.num_heads, q.size(-1) // self.num_heads).transpose(1, 2)
         k = k.view(x.size(0), -1, self.num_heads, k.size(-1) // self.num_heads).transpose(1, 2)
         v = v.view(x.size(0), -1, self.num_heads, v.size(-1) // self.num_heads).transpose(1, 2)
+        
+        q, k = self.rotary(q), self.rotary(k)
         
         attn_weights = torch.matmul(q, k.transpose(-2, -1)) / (k.size(-1) ** 0.5)
         attn_weights = F.softmax(attn_weights, dim=-1)
@@ -117,25 +150,6 @@ class MultiHeadSelfAttention(nn.Module):
         attn_output = self.out_proj(attn_output)
         return attn_output
         
-        
-class Rotary(nn.Module):
-    def __init__(self, dim: int, max_seq_len: int) -> None:
-        super().__init__()
-
-        angular_freq = (1 / 1024) ** torch.linspace(0, 1, steps=dim//4, dtype=torch.float32)
-        angular_freq = torch.cat([angular_freq, angular_freq.new_zeros(dim//4)])
-        t = torch.arange(max_seq_len, dtype=torch.float32)
-        theta = torch.einsum("i,j -> ij", t, angular_freq)
-        self.cos = nn.Buffer(theta.cos(), persistent=False)
-        self.sin = nn.Buffer(theta.sin(), persistent=False)
-
-    def forward(self, x_BTHD: Tensor) -> Tensor:
-        assert self.cos.size(0) >= x_BTHD.size(-3)
-        cos, sin = self.cos[None, :x_BTHD.size(-3), None, :], self.sin[None, :x_BTHD.size(-3), None, :]
-        x1, x2 = x_BTHD.to(dtype=torch.float32).chunk(2, dim=-1)
-        y1 = x1 * cos + x2 * sin
-        y2 = x1 * (-sin) + x2 * cos
-        return torch.cat((y1, y2), 3).type_as(x_BTHD)
     
 
 if __name__ == "__main__":
@@ -144,7 +158,8 @@ if __name__ == "__main__":
         vocab_size=config.vocab_size,
         embed_dim=config.embed_dim,
         num_heads=config.num_heads,
-        num_layers=config.num_layers
+        num_layers=config.num_layers,
+        seq_len=16
     )
     b = 4
     indices = torch.randint(0, config.vocab_size, (b, 16))
