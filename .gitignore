@@ -14,3 +14,6 @@ checkpoints/
 *.pt
 *.ckpt
 *.pth
+
+# Logs
+wandb/

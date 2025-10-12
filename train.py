@@ -5,6 +5,7 @@ import torch
 import torch.nn as nn
 import torch.optim as optim
 from tqdm import tqdm
+import wandb
 
 from model.embeddings import TokenEmbeddings, EmbeddingsConfig
 from model.transformer import DiffusionTransformer, TransformerConfig
@@ -13,6 +14,22 @@ from model.loss import cdcd_loss
 from model.scheduler import Scheduler
 
 def main() -> None:
+    # Initialize wandb
+    wandb.init(
+        project="text-diffusion",
+        config={
+            "learning_rate": 5e-3,
+            "epochs": 100,
+            "batch_size": 32,
+            "embed_dim": 256,
+            "num_heads": 8,
+            "num_layers": 6,
+            "seq_len": 64,
+            "dataset": "TinyStories",
+            "dataset_split": "train[:1%]"
+        }
+    )
+    
     # Load dataset and tokenizer
     dataset = load_dataset("roneneldan/TinyStories", split="train[:1%]")
     tokenizer = AutoTokenizer.from_pretrained("bert-base-uncased")
@@ -61,6 +78,7 @@ def main() -> None:
     
     # Training loop
     model.train()
+    global_step = 0
     for epoch in range(100):  # Reduced to 100 epochs
         for batch_num, batch in enumerate(dataloader):
             input_ids = batch['input_ids'].to(device)
@@ -78,6 +96,10 @@ def main() -> None:
             loss.backward()
             optimizer.step()
             
+            # Log loss to wandb
+            wandb.log({"loss": loss.item(), "epoch": epoch}, step=global_step)
+            global_step += 1
+            
             if batch_num % 500 == 0 or batch_num == len(dataloader) - 1:
                 model.eval()
                 with torch.no_grad():
@@ -85,6 +107,10 @@ def main() -> None:
                     print("Generated logits shape:", predicted_ids.shape)
                     # logits = model.lm_head(generated_logits)
                     # predicted_ids = torch.argmax(logits, dim=-1)
+                    
+                    # Create wandb table for generated samples
+                    generation_table = wandb.Table(columns=["sample_id", "conditioned_text", "generated_text", "full_text"])
+                    
                     for i in range(predicted_ids.size(0)):
                         # Split into conditioned and generated parts based on mask
                         conditioned_part = predicted_ids[i][mask[0] == 0]
@@ -92,8 +118,15 @@ def main() -> None:
                         
                         conditioned_text = tokenizer.decode(conditioned_part, skip_special_tokens=True)
                         generated_text = tokenizer.decode(generated_part, skip_special_tokens=True)
+                        full_text = conditioned_text + generated_text
                         
                         print(f"Generated Text {i+1}: {conditioned_text}\033[92m{generated_text}\033[0m")
+                        
+                        # Add to wandb table
+                        generation_table.add_data(i+1, conditioned_text, generated_text, full_text)
+                    
+                    # Log the generation table to wandb
+                    wandb.log({"generations": generation_table}, step=global_step)
                     
                 model.train()
 
@@ -105,7 +138,9 @@ def main() -> None:
             # "token_embeddings_state_dict": token_embeddings.state_dict(),
             "optimizer_state_dict": optimizer.state_dict(),
         }, "model_checkpoint.pth")
+    
     print("Training complete.")
+    wandb.finish()
 
     
 if __name__ == "__main__":
