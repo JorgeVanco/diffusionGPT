@@ -59,7 +59,7 @@ def main() -> None:
         tokenized_datasets, 
         batch_size=config.batch_size, 
         shuffle=True,
-        num_workers=4,
+        num_workers=0,
         pin_memory=True
     )
     
