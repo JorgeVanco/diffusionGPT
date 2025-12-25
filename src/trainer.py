@@ -2,6 +2,8 @@ import torch
 import torch.nn.functional as F
 from transformers import Trainer, TrainerCallback
 
+from src.utils import mask_input_ids_
+
 class TrainingInfoCallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs) -> None:
         print("\n" + "="*40)
@@ -66,14 +68,14 @@ class DiscreteDiffusionCollator:
         # Sample random timesteps for each example
         t = torch.rand((input_ids.size(0),), device=input_ids.device, generator=self.generator)
         
-        
         noisy_inputs = input_ids.clone()
         
-        # For each position, with probability t, replace with mask token id
-        prob_matrix = torch.rand(input_ids.shape, device=input_ids.device, generator=self.generator)
-        mask_token_id = self.tokenizer.mask_token_id
-        mask_matrix = prob_matrix < t.view(-1, 1)
-        noisy_inputs[mask_matrix] = mask_token_id
+        mask_input_ids_(
+            noisy_inputs, 
+            mask_token_id=self.tokenizer.mask_token_id, 
+            mask_prob=t, 
+            generator=self.generator
+        )
         
         return {
             'input_ids': noisy_inputs,
