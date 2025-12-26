@@ -40,6 +40,16 @@ def main() -> None:
         remove_columns=["text"]
     )
     
+    # Model parameters
+    n_layer = 4
+    n_embd = 256
+    n_head = 4
+    
+    # Training parameters
+    num_diffusion_steps = 50
+    learning_rate = 2e-5
+    batch_size = 16
+
     def model_init():
         # Placeholder for model initialization
         from transformers import AutoModelForCausalLM
@@ -48,9 +58,9 @@ def main() -> None:
         config = GPT2Config(
             vocab_size=len(tokenizer),
             n_positions=max_seq_length,  # Max sequence length
-            n_embd=256,       # Hidden dimension (Standard is 768)
-            n_layer=4,        # Number of layers (Standard is 12)
-            n_head=4,         # Attention heads (Standard is 12)
+            n_embd=n_embd,       # Hidden dimension (Standard is 768)
+            n_layer=n_layer,        # Number of layers (Standard is 12)
+            n_head=n_head,         # Attention heads (Standard is 12)
         )
         model = AutoModelForCausalLM.from_config(config)
         model.resize_token_embeddings(len(tokenizer))
@@ -62,19 +72,19 @@ def main() -> None:
 
     args = DiffusionTrainingArguments(
         # Diffusion specific
-        num_diffusion_steps=50,
+        num_diffusion_steps=num_diffusion_steps,
         # Output
         output_dir="output",
         # Optimization
-        learning_rate=2e-5,
+        learning_rate=learning_rate,
         lr_scheduler_type="warmup_stable_decay",
         lr_scheduler_kwargs={"num_decay_steps": 10000},
         warmup_steps=500,
         weight_decay=0.01,
         # Training
         num_train_epochs=3,
-        per_device_train_batch_size=16,
-        per_device_eval_batch_size=16,
+        per_device_train_batch_size=batch_size,
+        per_device_eval_batch_size=batch_size,
         # Evaluation & Saving
         eval_strategy="steps",
         eval_steps=1000,
@@ -85,7 +95,7 @@ def main() -> None:
         logging_strategy="steps",
         logging_steps=100,
         report_to="wandb",
-        run_name=f"text-diffusion-{datetime.now().strftime('%Y-%m-%d-%H-%M')}-test",
+        run_name=f"layers{n_layer}_embd{n_embd}_diff{num_diffusion_steps}_lr{learning_rate}_{datetime.now().strftime('%m%d_%H%M')}",
         # Misc
         remove_unused_columns=True,
     )
