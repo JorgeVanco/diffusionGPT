@@ -31,7 +31,9 @@ class TrainingInfoCallback(TrainerCallback):
         print(f"• Model Architecture:  {model.config.architectures[0] if model.config.architectures else 'Custom'}")
         print(f"• Total Parameters:    {total_params:,} ({total_params/1e6:.1f}M)")
         print(f"• Trainable Params:    {trainable_params:,} ({trainable_params/1e6:.1f}M)")
+        print(f"• Max Seq Length:      {model.config.n_positions if hasattr(model.config, 'n_positions') else 'Unknown'}")
         print(f"• Dataset Size:        {dataset_size:,} examples")
+        print(f"• Vocabulary Size:     {model.config.vocab_size}")
         print("-" * 40)
         print(f"• Total Epochs:        {args.num_train_epochs}")
         print(f"• Batch Size (Train):  {args.per_device_train_batch_size}")
@@ -65,7 +67,7 @@ class GenerativeEvalCallback(TrainerCallback):
         
         steps = getattr(args, "num_diffusion_steps", 10)
         print(f"Running generative evaluation with {steps} steps...")
-        outputs = [''.join(output) for output in pipe(self.prompts, num_steps=steps)]
+        outputs = pipe(self.prompts, num_steps=steps)
         
         if self.trainer:
             _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)

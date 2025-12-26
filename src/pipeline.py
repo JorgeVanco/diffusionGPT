@@ -62,4 +62,4 @@ class TextDiffusionPipeline(Pipeline):
         
         # Convert final tensor to image/text
         final_ids = model_outputs["final_state"]
-        return self.tokenizer.batch_decode(final_ids[0], skip_special_tokens=False)
+        return self.tokenizer.batch_decode(final_ids, skip_special_tokens=False)
