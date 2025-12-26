@@ -17,12 +17,14 @@ def main() -> None:
     tokenizer.mask_token = "<mask>"
     tokenizer.add_special_tokens({'mask_token': tokenizer.mask_token})
         
+    max_seq_length = 128  # Define a max sequence length for TinyStories
+        
     def tokenize_function(examples):
         return tokenizer(
             examples["text"], 
             padding=False,       # We pad dynamically in the collator
             truncation=True,     # Truncate to max model length
-            max_length=128       # Set a reasonable length for TinyStories
+            max_length=max_seq_length       # Set a reasonable length for TinyStories
         )
     
     # Apply tokenization and remove the raw 'text' column
@@ -44,7 +46,7 @@ def main() -> None:
         # config = AutoConfig.from_pretrained("gpt2")
         config = GPT2Config(
             vocab_size=len(tokenizer),
-            n_positions=512,  # Max sequence length
+            n_positions=max_seq_length,  # Max sequence length
             n_embd=256,       # Hidden dimension (Standard is 768)
             n_layer=4,        # Number of layers (Standard is 12)
             n_head=4,         # Attention heads (Standard is 12)
