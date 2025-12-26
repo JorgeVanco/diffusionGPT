@@ -135,12 +135,16 @@ class DiscreteDiffusionCollator:
         
         noisy_inputs = input_ids.clone()
         
-        mask_input_ids_(
+        mask_matrix = mask_input_ids_(
             noisy_inputs, 
             mask_token_id=self.tokenizer.mask_token_id, 
             mask_prob=t, 
             generator=self.generator
         )
+        
+        # Ignore loss on unmasked tokens and padding tokens
+        padding_mask = input_ids == self.tokenizer.pad_token_id
+        input_ids[~mask_matrix | padding_mask] = -100
         
         return {
             'input_ids': noisy_inputs,
