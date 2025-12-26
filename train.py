@@ -1,4 +1,3 @@
-from transformers import TrainingArguments
 from datasets import load_dataset
 from transformers import AutoTokenizer, AutoConfig, GPT2Config
 import os
@@ -10,8 +9,8 @@ from src.DiffusionTrainingArguments import DiffusionTrainingArguments
 
 def main() -> None:
     
-    train_dataset = load_dataset("roneneldan/TinyStories", split="train[:1]")
-    eval_dataset = load_dataset("roneneldan/TinyStories", split="validation[:1]")
+    train_dataset = load_dataset("roneneldan/TinyStories", split="train")
+    eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
     
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     if tokenizer.pad_token is None:
@@ -21,7 +20,7 @@ def main() -> None:
         
     max_seq_length = 128  # Define a max sequence length for TinyStories
         
-    def tokenize_function(examples):
+    def tokenize_function(examples) -> AutoTokenizer:
         return tokenizer(
             examples["text"], 
             padding=False,       # We pad dynamically in the collator
@@ -78,7 +77,7 @@ def main() -> None:
         per_device_eval_batch_size=16,
         # Evaluation & Saving
         eval_strategy="steps",
-        eval_steps=100,
+        eval_steps=1000,
         save_strategy="steps",
         save_steps=1000,
         load_best_model_at_end=True,

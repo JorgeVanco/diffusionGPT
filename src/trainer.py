@@ -6,15 +6,39 @@ from src.utils import mask_input_ids_, _dispatch_table_logging
 
 class TrainingInfoCallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs) -> None:
+        model = kwargs.get('model')
+        train_dataloader = kwargs.get('train_dataloader')
+        
+        if model is None:
+            raise ValueError("Model not found in on_train_begin kwargs.")
+        
+        # Calculate Parameter Count
+        total_params = sum(p.numel() for p in model.parameters())
+        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+        
+        # Calculate Dataset Size
+        dataset_size = "Unknown"
+        if train_dataloader:
+            try:
+                # Approximate if it's a generator, exact if it has __len__
+                dataset_size = len(train_dataloader.dataset) 
+            except:
+                dataset_size = len(train_dataloader) * args.per_device_train_batch_size
+
         print("\n" + "="*40)
         print("🚀 TRAINING STARTED - CONFIGURATION")
         print("="*40)
-        print(f"• Total Epochs:      {args.num_train_epochs}")
-        print(f"• Batch Size (Train):{args.per_device_train_batch_size}")
-        print(f"• Learning Rate:     {args.learning_rate}")
-        print(f"• Total Steps:       {state.max_steps}")
-        print(f"• Warmup Steps:      {args.warmup_steps}")
-        print(f"• Logging to:        {args.output_dir}")
+        print(f"• Model Architecture:  {model.config.architectures[0] if model.config.architectures else 'Custom'}")
+        print(f"• Total Parameters:    {total_params:,} ({total_params/1e6:.1f}M)")
+        print(f"• Trainable Params:    {trainable_params:,} ({trainable_params/1e6:.1f}M)")
+        print(f"• Dataset Size:        {dataset_size:,} examples")
+        print("-" * 40)
+        print(f"• Total Epochs:        {args.num_train_epochs}")
+        print(f"• Batch Size (Train):  {args.per_device_train_batch_size}")
+        print(f"• Learning Rate:       {args.learning_rate}")
+        print(f"• Total Steps:         {state.max_steps}")
+        print(f"• Warmup Steps:        {args.warmup_steps}")
+        print(f"• Logging to:          {args.output_dir}")
         print("="*40 + "\n")
         
 class GenerativeEvalCallback(TrainerCallback):
