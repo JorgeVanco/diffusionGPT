@@ -116,6 +116,7 @@ def main() -> None:
         train_dataset=tokenized_train,  # Placeholder for training dataset # type: ignore
         eval_dataset=tokenized_eval,    # Placeholder for evaluation dataset # type: ignore
         data_collator=data_collator,
+        processing_class=tokenizer,
         callbacks=[TrainingInfoCallback(), eval_callback],
     )
     
