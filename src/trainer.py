@@ -2,7 +2,7 @@ import torch
 import torch.nn.functional as F
 from transformers import Trainer, TrainerCallback
 
-from src.utils import mask_input_ids_
+from src.utils import mask_input_ids_, _dispatch_table_logging
 
 class TrainingInfoCallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs) -> None:
@@ -16,6 +16,47 @@ class TrainingInfoCallback(TrainerCallback):
         print(f"• Warmup Steps:      {args.warmup_steps}")
         print(f"• Logging to:        {args.output_dir}")
         print("="*40 + "\n")
+        
+class GenerativeEvalCallback(TrainerCallback):
+    def __init__(self, test_prompts, tokenizer, pipeline_cls) -> None:
+        self.prompts = test_prompts
+        self.tokenizer = tokenizer
+        self.pipeline_cls = pipeline_cls
+        self.trainer: None | Trainer = None
+
+    def on_evaluate(self, args, state, control, **kwargs) -> None:
+        # The Trainer passes the 'model' to this method automatically
+        model = kwargs.get("model")
+        
+        if model is None:
+            print("⚠️ Warning: No model found in on_evaluate kwargs. Skipping generation.")
+            return
+        
+        # Instantiate the pipeline dynamically using the current model
+        pipe = self.pipeline_cls(
+            model=model, 
+            tokenizer=self.tokenizer,
+            device=model.device 
+        )
+        
+        steps = getattr(args, "num_diffusion_steps", 10)
+        print(f"Running generative evaluation with {steps} steps...")
+        outputs = [''.join(output) for output in pipe(self.prompts, num_steps=steps)]
+        
+        if self.trainer:
+            _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
+        else:
+            print("⚠️ Warning: Trainer not set in GenerativeEvalCallback. Skipping logging.")
+        
+        print("\n" + "="*40)
+        print("🧪 EVALUATION COMPLETED")
+        print(f"• Step: {state.global_step}")
+        print(f"• Eval Loss: {state.log_history[-1]['eval_loss']:.4f}")
+        print("• Sample Outputs:")
+        for i, output in enumerate(outputs):
+            print(f"\t[{i}] {output}")
+        print("="*40 + "\n")
+
 
 class DiffusionTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:

@@ -4,12 +4,14 @@ from transformers import AutoTokenizer, AutoConfig, GPT2Config
 import os
 from datetime import datetime
 
-from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator, TrainingInfoCallback
+from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator, TrainingInfoCallback, GenerativeEvalCallback
+from src.pipeline import TextDiffusionPipeline
+from src.DiffusionTrainingArguments import DiffusionTrainingArguments
 
 def main() -> None:
     
-    train_dataset = load_dataset("roneneldan/TinyStories", split="train")
-    eval_dataset = load_dataset("roneneldan/TinyStories", split="validation")
+    train_dataset = load_dataset("roneneldan/TinyStories", split="train[:1]")
+    eval_dataset = load_dataset("roneneldan/TinyStories", split="validation[:1]")
     
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     if tokenizer.pad_token is None:
@@ -59,8 +61,11 @@ def main() -> None:
     
     os.environ["WANDB_PROJECT"] = "text-diffusion"
 
-    args = TrainingArguments(
-        output_dir="my_awesome_model",
+    args = DiffusionTrainingArguments(
+        # Diffusion specific
+        num_diffusion_steps=50,
+        # Output
+        output_dir="output",
         # Optimization
         learning_rate=2e-5,
         lr_scheduler_type="warmup_stable_decay",
@@ -72,14 +77,16 @@ def main() -> None:
         per_device_train_batch_size=16,
         per_device_eval_batch_size=16,
         # Evaluation & Saving
-        eval_strategy="epoch",
-        save_strategy="epoch",
+        eval_strategy="steps",
+        eval_steps=100,
+        save_strategy="steps",
+        save_steps=1000,
         load_best_model_at_end=True,
         # Logging
         logging_strategy="steps",
         logging_steps=100,
         report_to="wandb",
-        run_name=f"text-diffusion-{datetime.now().strftime('%Y-%m-%d-%H-%M')}",
+        run_name=f"text-diffusion-{datetime.now().strftime('%Y-%m-%d-%H-%M')}-test",
         # Misc
         remove_unused_columns=True,
     )
@@ -88,14 +95,23 @@ def main() -> None:
         tokenizer=tokenizer
     )
     
+    eval_callback = GenerativeEvalCallback(
+        test_prompts=["Once upon a time", "There was a huge dragon"],
+        tokenizer=tokenizer,
+        pipeline_cls=TextDiffusionPipeline
+    )
+    
     trainer = DiffusionTrainer(
         model_init=model_init,
         args=args,
         train_dataset=tokenized_train,  # Placeholder for training dataset # type: ignore
         eval_dataset=tokenized_eval,    # Placeholder for evaluation dataset # type: ignore
         data_collator=data_collator,
-        callbacks=[TrainingInfoCallback()],
+        callbacks=[TrainingInfoCallback(), eval_callback],
     )
+    
+    eval_callback.trainer = trainer  # Set trainer for logging purposes
+    
     trainer.train()
     
 if __name__ == "__main__":

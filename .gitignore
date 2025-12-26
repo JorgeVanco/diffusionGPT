@@ -17,3 +17,6 @@ checkpoints/
 
 # Logs
 wandb/
+
+# Output
+output/

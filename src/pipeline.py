@@ -1,4 +1,4 @@
-from transformers import Pipeline
+from transformers import BatchEncoding, Pipeline
 import torch
 from typing import Any
 
@@ -11,17 +11,35 @@ class TextDiffusionPipeline(Pipeline):
         forward_kwargs = {"num_steps": kwargs.get("num_steps", 10)}
         return {}, forward_kwargs, {}
     
-    def preprocess(self, input_text):
+    def preprocess(self, input_text, max_length=None) -> BatchEncoding | Any:
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer was not passed to the pipeline!")
         # Standard tokenization
-        return self.tokenizer(input_text, return_tensors="pt")
+        if max_length is None:
+            # Safely access config if it exists, default to 512
+            max_length = getattr(self.model.config, "n_positions", 512)
+
+        return self.tokenizer(
+            input_text,
+            return_tensors="pt",
+            padding="max_length",
+            max_length=max_length,
+            truncation=True,
+        )
     
     def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
         current_state = model_inputs["input_ids"]
-        all_states = [current_state]
+        all_states = [current_state.clone()]
         for step in range(num_steps):
-            # Predict full text with model
-            current_state = self.model(current_state)
+            with torch.no_grad():
+                # Predict full text with model
+                output = self.model(input_ids=current_state)
+                logits = output.logits
+                
+                pred_ids = torch.argmax(logits, dim=-1)
+                current_state = pred_ids
             
+            # Re-mask for next step, except on last step
             if step < num_steps - 1:
                 # Mask corresponding portion of text
                 t = 1 - (step + 1) / num_steps
@@ -31,10 +49,11 @@ class TextDiffusionPipeline(Pipeline):
                     mask_prob=torch.full((current_state.size(0),), t, device=current_state.device),
                     generator=None
                 )
-            all_states.append(current_state)        
+            all_states.append(current_state.clone())        
         
         return {"final_state": current_state, "history": all_states}
         
-    def postprocess(self, model_outputs):
+    def postprocess(self, model_outputs) -> list[str] | Any:
         # Convert final tensor to image/text
-        return self.model.decode(model_outputs["final_state"])
+        final_ids = model_outputs["final_state"]
+        return self.tokenizer.batch_decode(final_ids[0], skip_special_tokens=False)
