@@ -28,6 +28,9 @@ class TextDiffusionPipeline(Pipeline):
         )
     
     def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer was not passed to the pipeline!")
+        
         current_state = model_inputs["input_ids"]
         all_states = [current_state.clone()]
         for step in range(num_steps):
@@ -49,11 +52,14 @@ class TextDiffusionPipeline(Pipeline):
                     mask_prob=torch.full((current_state.size(0),), t, device=current_state.device),
                     generator=None
                 )
-            all_states.append(current_state.clone())        
+            all_states.append(current_state.clone())
         
         return {"final_state": current_state, "history": all_states}
         
     def postprocess(self, model_outputs) -> list[str] | Any:
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer was not passed to the pipeline!")
+        
         # Convert final tensor to image/text
         final_ids = model_outputs["final_state"]
         return self.tokenizer.batch_decode(final_ids[0], skip_special_tokens=False)

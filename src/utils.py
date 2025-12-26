@@ -30,7 +30,7 @@ def _dispatch_table_logging(self, content, step, trainer) -> None:
         from transformers.integrations import TensorBoardCallback
         # Finding the TB writer is a bit tricky, it's hidden inside the trainer
         tb_callback = [c for c in trainer.callback_handler.callbacks if isinstance(c, TensorBoardCallback)]
-        if tb_callback:
+        if tb_callback and tb_callback[0].tb_writer is not None:
             writer = tb_callback[0].tb_writer
             # TensorBoard expects specific 'add_text' calls
             for i, (p, g) in enumerate(zip(self.prompts, content)):
@@ -38,7 +38,7 @@ def _dispatch_table_logging(self, content, step, trainer) -> None:
 
     # --- MLFLOW ---
     if "mlflow" in trainer.args.report_to:
-        import mlflow
+        import mlflow # type: ignore
         # MLFlow usually logs artifacts (files) or text
         for i, (p, g) in enumerate(zip(self.prompts, content)):
             mlflow.log_text(g, f"step_{step}_sample_{i}.txt")
