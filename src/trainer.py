@@ -86,12 +86,18 @@ class GenerativeEvalCallback(TrainerCallback):
 
 class DiffusionTrainer(Trainer):
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer was not passed to the trainer!")
+        
         labels = inputs.pop("labels")
         t = inputs.pop("t") # Timestep passed from collator
         
         # Forward pass
         outputs = model(**inputs)
         logits = outputs.logits
+        
+        # Set logit that corresponds to the mask token to -inf
+        logits[:, :, self.tokenizer.mask_token_id] = torch.finfo(logits.dtype).min
         
         # Flatten for CrossEntropy
         # logits: (B, L, V), labels: (B, L)
