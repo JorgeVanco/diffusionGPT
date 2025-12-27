@@ -14,7 +14,7 @@ def main() -> None:
     
     tokenizer = AutoTokenizer.from_pretrained("gpt2")
     if tokenizer.pad_token is None:
-        tokenizer.pad_token = tokenizer.eos_token
+        tokenizer.add_special_tokens({'pad_token': '[PAD]'}) 
     tokenizer.mask_token = "<mask>"
     tokenizer.add_special_tokens({'mask_token': tokenizer.mask_token})
         
@@ -52,18 +52,29 @@ def main() -> None:
 
     def model_init():
         # Placeholder for model initialization
-        from transformers import AutoModelForCausalLM
+        from transformers import AutoModelForMaskedLM
 
-        # config = AutoConfig.from_pretrained("gpt2")
-        config = GPT2Config(
-            vocab_size=len(tokenizer),
-            n_positions=max_seq_length,  # Max sequence length
-            n_embd=n_embd,       # Hidden dimension (Standard is 768)
-            n_layer=n_layer,        # Number of layers (Standard is 12)
-            n_head=n_head,         # Attention heads (Standard is 12)
-        )
-        model = AutoModelForCausalLM.from_config(config)
-        model.resize_token_embeddings(len(tokenizer))
+        config = AutoConfig.from_pretrained("answerdotai/ModernBERT-base")
+        print(config)
+        # config = GPT2Config(
+        #     vocab_size=len(tokenizer),
+        #     n_positions=max_seq_length,  # Max sequence length
+        #     n_embd=n_embd,       # Hidden dimension (Standard is 768)
+        #     n_layer=n_layer,        # Number of layers (Standard is 12)
+        #     n_head=n_head,         # Attention heads (Standard is 12)
+        # )
+        config.hidden_size = n_embd
+        config.num_hidden_layers = n_layer
+        config.num_attention_heads = n_head
+        config.intermediate_size = n_embd * 4  # Typically 4x hidden size
+        config.vocab_size = len(tokenizer)
+        config.seq_length = max_seq_length
+        config.mask_token_id = tokenizer.mask_token_id
+        config.pad_token_id = tokenizer.pad_token_id
+        # print(config)
+        
+        model = AutoModelForMaskedLM.from_config(config)
+        # model.resize_token_embeddings(len(tokenizer))
 
         return model
 

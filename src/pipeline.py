@@ -17,7 +17,7 @@ class TextDiffusionPipeline(Pipeline):
         # Standard tokenization
         if max_length is None:
             # Safely access config if it exists, default to 512
-            max_length = getattr(self.model.config, "n_positions", 512)
+            max_length = getattr(self.model.config, "seq_length", 512)
             
         if input_text is None:
             input_text = ""

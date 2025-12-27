@@ -31,7 +31,7 @@ class TrainingInfoCallback(TrainerCallback):
         print(f"• Model Architecture:  {model.config.architectures[0] if model.config.architectures else 'Custom'}")
         print(f"• Total Parameters:    {total_params:,} ({total_params/1e6:.1f}M)")
         print(f"• Trainable Params:    {trainable_params:,} ({trainable_params/1e6:.1f}M)")
-        print(f"• Max Seq Length:      {model.config.n_positions if hasattr(model.config, 'n_positions') else 'Unknown'}")
+        print(f"• Max Seq Length:      {model.config.seq_length if hasattr(model.config, 'seq_length') else 'Unknown'}")
         print(f"• Dataset Size:        {dataset_size:,} examples")
         print(f"• Vocabulary Size:     {model.config.vocab_size}")
         print("-" * 40)
