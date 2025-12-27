@@ -33,14 +33,11 @@ class TextDiffusionPipeline(Pipeline):
         
         current_state = model_inputs["input_ids"]
         all_states = [current_state.clone()]
+        
+        # Determine which tokens can be re-masked (i.e., mask and pad tokens)
+        remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
+        
         for step in range(num_steps):
-            with torch.no_grad():
-                # Predict full text with model
-                output = self.model(input_ids=current_state)
-                logits = output.logits
-                
-                pred_ids = torch.argmax(logits, dim=-1)
-                current_state = pred_ids
             
             # Re-mask for next step, except on last step
             if step < num_steps - 1:
@@ -50,8 +47,21 @@ class TextDiffusionPipeline(Pipeline):
                     current_state,
                     mask_token_id=self.tokenizer.mask_token_id,
                     mask_prob=torch.full((current_state.size(0),), t, device=current_state.device),
+                    remasking_mask=remasking_mask,
                     generator=None
                 )
+                
+            # Update remasking mask, we cannot re-mask tokens that are not masked
+            remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
+
+            with torch.no_grad():
+                # Predict full text with model
+                output = self.model(input_ids=current_state)
+                logits = output.logits
+                
+                pred_ids = torch.argmax(logits, dim=-1)
+                current_state = pred_ids * remasking_mask + current_state * (~remasking_mask)
+            
             all_states.append(current_state.clone())
         
         return {"final_state": current_state, "history": all_states}
