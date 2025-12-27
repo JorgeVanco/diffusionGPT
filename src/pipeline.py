@@ -19,8 +19,16 @@ class TextDiffusionPipeline(Pipeline):
             # Safely access config if it exists, default to 512
             max_length = getattr(self.model.config, "n_positions", 512)
             
-        if input_text is None or input_text == "":
+        if input_text is None:
+            input_text = ""
+            
+        tokenized_text = self.tokenizer.encode(
+            input_text
+            )
+        if len(tokenized_text) < max_length:
             input_ids = torch.full((1, max_length), self.tokenizer.mask_token_id, dtype=torch.long) # type: ignore
+            input_ids[0, :len(tokenized_text)] = torch.tensor(tokenized_text, dtype=torch.long)
+
             return BatchEncoding({
                 "input_ids": input_ids,
                 "attention_mask": torch.ones_like(input_ids)
