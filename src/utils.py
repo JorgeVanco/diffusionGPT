@@ -49,3 +49,118 @@ def _dispatch_table_logging(self, content, step, trainer) -> None:
         # MLFlow usually logs artifacts (files) or text
         for i, (p, g) in enumerate(zip(self.prompts, content)):
             mlflow.log_text(g, f"step_{step}_sample_{i}.txt")
+            
+
+def visualize_diffusion_steps(pipeline_output, tokenizer, sample_idx=0):
+    """
+    Visualizes the discrete diffusion process in the terminal with colors.
+    
+    Args:
+        pipeline_output: The dict returned by pipeline._forward()
+        tokenizer: The tokenizer used for decoding
+        sample_idx: Which example in the batch to visualize (default 0)
+    """
+    # ANSI Color Codes
+    GREEN = '\033[92m'
+    RED = '\033[91m' # For Masks
+    RESET = '\033[0m'
+    GRAY = '\033[90m'
+
+    history = pipeline_output["history"]
+    
+    print(f"\n{GRAY}{'='*20} DIFFUSION PROCESS {'='*20}{RESET}")
+    
+    # Get the mask ID for comparison
+    mask_id = tokenizer.mask_token_id
+    
+    for step, state_tensor in enumerate(history):
+        # state_tensor is (Batch, Seq_Len) -> Get specific sample
+        current_ids = state_tensor[sample_idx]
+        
+        # Decode logic with highlighting
+        decoded_tokens = []
+        for i, token_id in enumerate(current_ids):
+            token_str = tokenizer.decode([token_id])
+            
+            # 1. It is a MASK
+            if token_id == mask_id:
+                decoded_tokens.append(f"{RED}█{RESET}")
+            
+            # 2. It is a NEWLY revealed token (compare with previous step)
+            elif step > 0 and history[step-1][sample_idx][i] == mask_id:
+                decoded_tokens.append(f"{GREEN}{token_str}{RESET}")
+                
+            # 3. It is a STABLE token (revealed previously)
+            else:
+                decoded_tokens.append(token_str)
+        
+        # Join and print
+        full_text = "".join(decoded_tokens)
+        print(f"{GRAY}Step {step:02d}:{RESET} {full_text}")
+
+    print(f"{GRAY}{'='*60}{RESET}\n")
+    
+    
+import time
+import os
+from IPython.display import clear_output, display
+
+def animate_diffusion(pipeline_output, tokenizer, interval=0.2, sample_idx=0):
+    """
+    Animates the text generation process.
+    Works in both Terminal and Jupyter Notebooks.
+    """
+    history = pipeline_output["history"]
+    mask_id = tokenizer.mask_token_id
+    
+    # ANSI Colors
+    GREEN = '\033[92m'
+    RED = '\033[91m'
+    RESET = '\033[0m'
+    BOLD = '\033[1m'
+    
+    print(f"🎬 Starting Diffusion Animation ({len(history)} steps)...\n")
+    time.sleep(1)
+
+    for step, current_state in enumerate(history):
+        # 1. Clear Screen
+        # Check if running in Jupyter/Colab
+        try:
+            get_ipython()
+            clear_output(wait=True)
+        except NameError:
+            # Running in standard terminal
+            os.system('cls' if os.name == 'nt' else 'clear')
+        
+        # 2. Build the colored string
+        current_ids = current_state[sample_idx]
+        display_tokens = []
+        
+        for i, token_id in enumerate(current_ids):
+            token_str = tokenizer.decode([token_id])
+            
+            # Logic: Determine color based on change from previous step
+            if token_id == mask_id:
+                # It's a mask -> Red Block
+                display_tokens.append(f"{RED}█{RESET}")
+            
+            elif step > 0 and history[step-1][sample_idx][i] == mask_id:
+                # It WAS a mask, now it's a word -> Green (Pop effect)
+                display_tokens.append(f"{GREEN}{BOLD}{token_str}{RESET}")
+                
+            else:
+                # Stable word -> Normal
+                display_tokens.append(token_str)
+                
+        # 3. Print the frame
+        full_text = "".join(display_tokens)
+        print(f"\n{BOLD}Step {step}/{len(history)-1}{RESET}")
+        print("-" * 40)
+        print(full_text)
+        print("-" * 40)
+        
+        # 4. Pause
+        if step < len(history) - 1:
+            time.sleep(interval)
+        else:
+            print(f"\n{GREEN}✨ Generation Complete!{RESET}")

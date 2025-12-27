@@ -67,8 +67,9 @@ class GenerativeEvalCallback(TrainerCallback):
         
         steps = getattr(args, "num_diffusion_steps", 10)
         print(f"Running generative evaluation with {steps} steps...")
-        outputs = [o[0] for o in pipe(self.prompts, num_steps=steps)]
-        
+        pipe_outputs = pipe(self.prompts, num_steps=steps)
+        outputs = [o["decoded_texts"][0] for o in pipe_outputs]
+                
         if self.trainer:
             _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
         else:
