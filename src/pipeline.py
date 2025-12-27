@@ -18,6 +18,9 @@ class TextDiffusionPipeline(Pipeline):
         if max_length is None:
             # Safely access config if it exists, default to 512
             max_length = getattr(self.model.config, "n_positions", 512)
+            
+        if input_text is None:
+            input_text = ""
 
         return self.tokenizer(
             input_text,
