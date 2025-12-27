@@ -19,8 +19,12 @@ class TextDiffusionPipeline(Pipeline):
             # Safely access config if it exists, default to 512
             max_length = getattr(self.model.config, "n_positions", 512)
             
-        if input_text is None:
-            input_text = ""
+        if input_text is None or input_text == "":
+            input_ids = torch.full((1, max_length), self.tokenizer.mask_token_id, dtype=torch.long) # type: ignore
+            return BatchEncoding({
+                "input_ids": input_ids,
+                "attention_mask": torch.ones_like(input_ids)
+            })
 
         return self.tokenizer(
             input_text,
@@ -30,6 +34,7 @@ class TextDiffusionPipeline(Pipeline):
             truncation=True,
         )
     
+    @torch.no_grad()
     def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
         if self.tokenizer is None:
             raise ValueError("Tokenizer was not passed to the pipeline!")
@@ -41,29 +46,38 @@ class TextDiffusionPipeline(Pipeline):
         remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
         
         for step in range(num_steps):
+            t_current = 1 - step / num_steps
+            t_next = 1 - (step + 1) / num_steps
             
-            # Re-mask for next step, except on last step
+            # Predict full text with model
+            output = self.model(input_ids=current_state)
+            logits = output.logits
+            
+            # Set logit that corresponds to the mask token to -inf
+            logits[:, :, self.tokenizer.mask_token_id] = torch.finfo(logits.dtype).min
+            
+            # Ancestral sampling logic
+            probs = torch.softmax(logits, dim=-1)
+            sampled_ids = torch.distributions.Categorical(probs).sample()
+            
+            # Calculate Unmasking Probability (Equation 7 https://arxiv.org/pdf/2406.07524)
+            # P(unmask | masked) = (alpha_s - alpha_t) / (1 - alpha_t)
+            # mapping: alpha_t = (1 - t_current), alpha_s = (1 - t_next)
+            # resulting simplified formula: (t_current - t_next) / t_current
             if step < num_steps - 1:
-                # Mask corresponding portion of text
-                t = 1 - (step + 1) / num_steps
-                mask_input_ids_(
-                    current_state,
-                    mask_token_id=self.tokenizer.mask_token_id,
-                    mask_prob=torch.full((current_state.size(0),), t, device=current_state.device),
-                    remasking_mask=remasking_mask,
-                    generator=None
-                )
-                
-            # Update remasking mask, we cannot re-mask tokens that are not masked
-            remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
-
-            with torch.no_grad():
-                # Predict full text with model
-                output = self.model(input_ids=current_state)
-                logits = output.logits
-                
-                pred_ids = torch.argmax(logits, dim=-1)
-                current_state = pred_ids * remasking_mask + current_state * (~remasking_mask)
+                unmasking_prob = (t_current - t_next) / t_current
+            else:
+                unmasking_prob = 1.0 # Force unmask at the end
+            
+            # Unmask the tokens if unmasking_mask is True
+            unmasking_mask = torch.rand(current_state.shape, device=current_state.device) < unmasking_prob
+            
+            remasking_mask &= (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
+            
+            update_mask = unmasking_mask & remasking_mask
+            
+            # Update current state
+            current_state[update_mask] = sampled_ids[update_mask]
             
             all_states.append(current_state.clone())
         
