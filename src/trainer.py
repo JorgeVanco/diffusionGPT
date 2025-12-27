@@ -67,7 +67,7 @@ class GenerativeEvalCallback(TrainerCallback):
         
         steps = getattr(args, "num_diffusion_steps", 10)
         print(f"Running generative evaluation with {steps} steps...")
-        outputs = pipe(self.prompts, num_steps=steps)
+        outputs = [o[0] for o in pipe(self.prompts, num_steps=steps)]
         
         if self.trainer:
             _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
@@ -80,7 +80,7 @@ class GenerativeEvalCallback(TrainerCallback):
         print(f"• Eval Loss: {state.log_history[-1]['eval_loss']:.4f}")
         print("• Sample Outputs:")
         for i, output in enumerate(outputs):
-            print(f"\t[{i}] {output}")
+            print(f"[{i}] {output}")
         print("="*40 + "\n")
 
 
