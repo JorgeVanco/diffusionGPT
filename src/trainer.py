@@ -186,8 +186,7 @@ class DiscreteDiffusionCollator:
             # Apply Random Swaps
             noisy_inputs[corruption_mask] = random_tokens[corruption_mask]
         
-            # Ignore loss on unmasked tokens and padding tokens
-            labels[corruption_mask] = input_ids[corruption_mask] # Calculate loss on CORRUPTIONS (Seed Diffusion)
+            labels[eligible_for_corruption] = input_ids[eligible_for_corruption] # Calculate loss on visible tokens (Seed Diffusion)
         
         return {
             'input_ids': noisy_inputs,
