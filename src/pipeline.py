@@ -9,7 +9,12 @@ class TextDiffusionPipeline(Pipeline):
         # Allow user to control the number of steps (e.g., diffusion steps)
         # default to 10 steps
         forward_kwargs = {"num_steps": kwargs.get("num_steps", 10)}
-        return {}, forward_kwargs, {}
+        
+        preprocess_kwargs = {}
+        if "max_length" in kwargs:
+            preprocess_kwargs["max_length"] = kwargs["max_length"]
+
+        return preprocess_kwargs, forward_kwargs, {}
     
     def preprocess(self, input_text, max_length=None) -> BatchEncoding | Any:
         if self.tokenizer is None:
