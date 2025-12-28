@@ -3,7 +3,8 @@ from transformers import AutoTokenizer, AutoConfig, GPT2Config
 import os
 from datetime import datetime
 
-from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator, TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
+from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
+from src.trainer_callbacks import TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
 from src.pipeline import TextDiffusionPipeline
 from src.DiffusionTrainingArguments import DiffusionTrainingArguments
 
@@ -80,12 +81,14 @@ def main() -> None:
 
     
     os.environ["WANDB_PROJECT"] = "text-diffusion"
+    
+    run_name = f"layers{n_layer}_embd{n_embd}_seq{max_seq_length}_diff{num_diffusion_steps}_lr{learning_rate}_{datetime.now().strftime('%m%d_%H%M')}"
 
     args = DiffusionTrainingArguments(
         # Diffusion specific
         num_diffusion_steps=num_diffusion_steps,
         # Output
-        output_dir="output",
+        output_dir=f"output/{run_name}",
         # Optimization
         learning_rate=learning_rate,
         lr_scheduler_type="warmup_stable_decay",
@@ -106,7 +109,7 @@ def main() -> None:
         logging_strategy="steps",
         logging_steps=100,
         report_to="wandb",
-        run_name=f"layers{n_layer}_embd{n_embd}_seq{max_seq_length}_diff{num_diffusion_steps}_lr{learning_rate}_{datetime.now().strftime('%m%d_%H%M')}",
+        run_name=run_name,
         # Misc
         remove_unused_columns=True,
     )
