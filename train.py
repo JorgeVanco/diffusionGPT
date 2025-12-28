@@ -3,7 +3,7 @@ from transformers import AutoTokenizer, AutoConfig, GPT2Config
 import os
 from datetime import datetime
 
-from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator, TrainingInfoCallback, GenerativeEvalCallback
+from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator, TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
 from src.pipeline import TextDiffusionPipeline
 from src.DiffusionTrainingArguments import DiffusionTrainingArguments
 
@@ -55,7 +55,7 @@ def main() -> None:
         from transformers import AutoModelForMaskedLM
 
         config = AutoConfig.from_pretrained("answerdotai/ModernBERT-base")
-        print(config)
+        # print(config)
         # config = GPT2Config(
         #     vocab_size=len(tokenizer),
         #     n_positions=max_seq_length,  # Max sequence length
@@ -106,13 +106,14 @@ def main() -> None:
         logging_strategy="steps",
         logging_steps=100,
         report_to="wandb",
-        run_name=f"layers{n_layer}_embd{n_embd}_diff{num_diffusion_steps}_lr{learning_rate}_{datetime.now().strftime('%m%d_%H%M')}",
+        run_name=f"layers{n_layer}_embd{n_embd}_seq{max_seq_length}_diff{num_diffusion_steps}_lr{learning_rate}_{datetime.now().strftime('%m%d_%H%M')}",
         # Misc
         remove_unused_columns=True,
     )
     
     data_collator = DiscreteDiffusionCollator(
-        tokenizer=tokenizer
+        tokenizer=tokenizer,
+        corruption_prob=args.corruption_prob
     )
     
     eval_callback = GenerativeEvalCallback(
@@ -120,6 +121,7 @@ def main() -> None:
         tokenizer=tokenizer,
         pipeline_cls=TextDiffusionPipeline
     )
+    seed_diffusion_curriculum_callback = SeedDiffusionCurriculumCallback()
     
     trainer = DiffusionTrainer(
         model_init=model_init,
@@ -128,10 +130,11 @@ def main() -> None:
         eval_dataset=tokenized_eval,    # Placeholder for evaluation dataset # type: ignore
         data_collator=data_collator,
         processing_class=tokenizer,
-        callbacks=[TrainingInfoCallback(), eval_callback],
+        callbacks=[TrainingInfoCallback(), eval_callback, seed_diffusion_curriculum_callback],
     )
     
     eval_callback.trainer = trainer  # Set trainer for logging purposes
+    seed_diffusion_curriculum_callback.trainer = trainer  # Set trainer for curriculum callback
     
     trainer.train()
     

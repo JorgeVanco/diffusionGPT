@@ -83,6 +83,24 @@ class GenerativeEvalCallback(TrainerCallback):
         for i, output in enumerate(outputs):
             print(f"[{i}] {output}")
         print("="*40 + "\n")
+        
+
+class SeedDiffusionCurriculumCallback(TrainerCallback):
+    def __init__(self) -> None:
+        self.trainer: None | Trainer = None
+
+    def on_step_begin(self, args, state, control, **kwargs) -> None:
+        if self.trainer is None:
+            raise ValueError("Trainer not set in SeedDiffusionCurriculumCallback.")
+        
+        # Check if we are past 80% of training (Two stage curriculum for Robust Diffusion Training - Section 3.1 in Seed Diffusion https://arxiv.org/pdf/2508.02193)
+        threshold_step = state.max_steps * 0.8
+        
+        if state.global_step >= threshold_step:
+            if hasattr(self.trainer.data_collator, "edit_stage_active"):
+                if not self.trainer.data_collator.edit_stage_active:    # type: ignore
+                    print(f"\n[Curriculum] Step {state.global_step}: Switching to Edit-Based Training Stage! 🔀")
+                    self.trainer.data_collator.edit_stage_active = True # type: ignore
 
 
 class DiffusionTrainer(Trainer):
@@ -123,11 +141,13 @@ class DiffusionTrainer(Trainer):
     
     
 class DiscreteDiffusionCollator:
-    def __init__(self, tokenizer) -> None:
+    def __init__(self, tokenizer, corruption_prob=0.1) -> None:
         self.tokenizer = tokenizer
+        self.corruption_prob = corruption_prob
         self.seed = 42
         self.generator = torch.Generator().manual_seed(self.seed)
-        torch.manual_seed(self.seed)
+        # Add a flag to control the curriculum
+        self.edit_stage_active = False
 
     def __call__(self, batch) -> dict[str, torch.Tensor]:
         batch_inputs = self.tokenizer.pad(
@@ -150,14 +170,28 @@ class DiscreteDiffusionCollator:
             mask_prob=t, 
             generator=self.generator
         )
+        labels = torch.full_like(input_ids, -100)
+        labels[mask_matrix] = input_ids[mask_matrix]    # Calculate loss on MASKS (Standard MDLM)
         
-        # Ignore loss on unmasked tokens and padding tokens
-        padding_mask = input_ids == self.tokenizer.pad_token_id
-        input_ids[~mask_matrix | padding_mask] = -100
+        if self.edit_stage_active:  # Apply Seed Diffusion Corruption Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
+            # Elegible for corruption
+            eligible_for_corruption = (~mask_matrix) & (attention_mask.bool())
+            
+            corruption_matrix = torch.rand(input_ids.shape, device=input_ids.device) < self.corruption_prob
+            corruption_mask = eligible_for_corruption & corruption_matrix
+            
+            # Generate random tokens for the corrupted positions
+            random_tokens = torch.randint(0, len(self.tokenizer), input_ids.shape, device=input_ids.device)
+            
+            # Apply Random Swaps
+            noisy_inputs[corruption_mask] = random_tokens[corruption_mask]
+        
+            # Ignore loss on unmasked tokens and padding tokens
+            labels[corruption_mask] = input_ids[corruption_mask] # Calculate loss on CORRUPTIONS (Seed Diffusion)
         
         return {
             'input_ids': noisy_inputs,
             'attention_mask': attention_mask,
-            'labels': input_ids,
+            'labels': labels,
             't': t
         }

@@ -5,10 +5,10 @@ from typing import Any, Generator
 from src.utils import mask_input_ids_
 
 class TextDiffusionPipeline(Pipeline):
-    def _sanitize_parameters(self, **kwargs) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    def _sanitize_parameters(self, num_steps: int = 50, allow_edits: bool = True, **kwargs) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         # Allow user to control the number of steps (e.g., diffusion steps)
         # default to 10 steps
-        forward_kwargs = {"num_steps": kwargs.get("num_steps", 10)}
+        forward_kwargs = {"num_steps": num_steps, "allow_edits": allow_edits}
         
         preprocess_kwargs = {}
         if "max_length" in kwargs:
@@ -48,7 +48,7 @@ class TextDiffusionPipeline(Pipeline):
         )
         
     @torch.no_grad()
-    def diffusion_generator(self, input_ids, num_steps):
+    def diffusion_generator(self, input_ids, num_steps, allow_edits=True):
         if self.tokenizer is None:
             raise ValueError("Tokenizer was not passed to the pipeline!")
         
@@ -56,7 +56,8 @@ class TextDiffusionPipeline(Pipeline):
         yield current_state.clone() # Yield Step 0
         
         # Determine which tokens can be re-masked (i.e., mask and pad tokens)
-        remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
+        initial_mask = (current_state == self.tokenizer.mask_token_id) | \
+                       (current_state == self.tokenizer.pad_token_id)
         
         for step in range(num_steps):
             t_current = 1 - step / num_steps
@@ -83,30 +84,44 @@ class TextDiffusionPipeline(Pipeline):
                 unmasking_prob = 1.0 # Force unmask at the end
             
             # Unmask the tokens if unmasking_mask is True
-            unmasking_mask = torch.rand(current_state.shape, device=current_state.device) < unmasking_prob
+            unmasking_mask = torch.rand_like(current_state, dtype=torch.float) < unmasking_prob
             
-            remasking_mask &= (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
+            remasking_mask = (current_state == self.tokenizer.mask_token_id) | \
+                             (current_state == self.tokenizer.pad_token_id)
             
-            update_mask = unmasking_mask & remasking_mask
+            update_mask = unmasking_mask & remasking_mask & initial_mask
             
+            if allow_edits: # Apply Seed Diffusion Editing Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
+                alpha_t = 0.1 * (1 - step / num_steps)  # alpha_t decreases from 0.1 to 0 (Seed Diffusion)
+                
+                edit_mask = torch.rand_like(current_state, dtype=torch.float) < alpha_t
+                
+                is_visible = (current_state != self.tokenizer.mask_token_id) & \
+                             (current_state != self.tokenizer.pad_token_id) & \
+                             (current_state != self.tokenizer.eos_token_id)
+                edit_mask = is_visible & edit_mask & initial_mask # Use initial_mask to avoid editing original prompt
+                
+                # Combine both masks
+                update_mask = update_mask | edit_mask
+
             # Update current state
             current_state[update_mask] = sampled_ids[update_mask]
             
             yield current_state.clone() # Yield after each step
     
     @torch.no_grad()
-    def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
+    def _forward(self, model_inputs, num_steps=50, allow_edits=True) -> dict[str, Any]:
         if self.tokenizer is None:
             raise ValueError("Tokenizer was not passed to the pipeline!")
         
         input_ids = model_inputs["input_ids"]
-        all_states = list(self.diffusion_generator(input_ids, num_steps))
+        all_states = list(self.diffusion_generator(input_ids, num_steps, allow_edits=allow_edits))
         final_state = all_states[-1]
     
         return {"final_state": final_state, "history": all_states}
     
     @torch.no_grad()
-    def stream_generation(self, input_text, num_steps=50, max_length=None) -> Generator[str, None, None]:
+    def stream_generation(self, input_text, num_steps=50, allow_edits=True, max_length=None) -> Generator[str, None, None]:
         """
         Public method to stream text generation step-by-step.
         """
@@ -115,7 +130,7 @@ class TextDiffusionPipeline(Pipeline):
         input_ids = inputs["input_ids"].to(self.model.device) # type: ignore
         
         # 2. Iterate over generator
-        for step_tensor in self.diffusion_generator(input_ids, num_steps):
+        for step_tensor in self.diffusion_generator(input_ids, num_steps, allow_edits=allow_edits):
             # Decode current state
             text = self.tokenizer.decode(step_tensor[0], skip_special_tokens=False) # type: ignore
             yield text
