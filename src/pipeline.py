@@ -1,6 +1,6 @@
 from transformers import BatchEncoding, Pipeline
 import torch
-from typing import Any
+from typing import Any, Generator
 
 from src.utils import mask_input_ids_
 
@@ -46,14 +46,14 @@ class TextDiffusionPipeline(Pipeline):
             max_length=max_length,
             truncation=True,
         )
-    
+        
     @torch.no_grad()
-    def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
+    def diffusion_generator(self, input_ids, num_steps):
         if self.tokenizer is None:
             raise ValueError("Tokenizer was not passed to the pipeline!")
         
-        current_state = model_inputs["input_ids"]
-        all_states = [current_state.clone()]
+        current_state = input_ids.clone()
+        yield current_state.clone() # Yield Step 0
         
         # Determine which tokens can be re-masked (i.e., mask and pad tokens)
         remasking_mask = (current_state == self.tokenizer.mask_token_id) | (current_state == self.tokenizer.pad_token_id)
@@ -92,9 +92,33 @@ class TextDiffusionPipeline(Pipeline):
             # Update current state
             current_state[update_mask] = sampled_ids[update_mask]
             
-            all_states.append(current_state.clone())
+            yield current_state.clone() # Yield after each step
+    
+    @torch.no_grad()
+    def _forward(self, model_inputs, num_steps=10) -> dict[str, Any]:
+        if self.tokenizer is None:
+            raise ValueError("Tokenizer was not passed to the pipeline!")
         
-        return {"final_state": current_state, "history": all_states}
+        input_ids = model_inputs["input_ids"]
+        all_states = list(self.diffusion_generator(input_ids, num_steps))
+        final_state = all_states[-1]
+    
+        return {"final_state": final_state, "history": all_states}
+    
+    @torch.no_grad()
+    def stream_generation(self, input_text, num_steps=50, max_length=None) -> Generator[str, None, None]:
+        """
+        Public method to stream text generation step-by-step.
+        """
+        # 1. Preprocess
+        inputs = self.preprocess(input_text, max_length)
+        input_ids = inputs["input_ids"].to(self.model.device) # type: ignore
+        
+        # 2. Iterate over generator
+        for step_tensor in self.diffusion_generator(input_ids, num_steps):
+            # Decode current state
+            text = self.tokenizer.decode(step_tensor[0], skip_special_tokens=False) # type: ignore
+            yield text
         
     def postprocess(self, model_outputs) -> list[str] | Any:
         if self.tokenizer is None:
