@@ -2,6 +2,7 @@ from datasets import load_dataset
 from transformers import AutoTokenizer, AutoConfig, GPT2Config
 import os
 from datetime import datetime
+from itertools import chain
 
 from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
 from src.trainer_callbacks import TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
@@ -22,12 +23,14 @@ def main() -> None:
     max_seq_length = 128  # Define a max sequence length for TinyStories
         
     def tokenize_function(examples) -> AutoTokenizer:
-        return tokenizer(
+        outputs =  tokenizer(
             examples["text"], 
             padding=False,       # We pad dynamically in the collator
             truncation=True,     # Truncate to max model length
-            max_length=max_seq_length       # Set a reasonable length for TinyStories
         )
+        outputs["input_ids"] = [ids + [tokenizer.eos_token_id] for ids in outputs["input_ids"]]
+        outputs["attention_mask"] = [am + [1] for am in outputs["attention_mask"]]
+        return outputs
     
     # Apply tokenization and remove the raw 'text' column
     tokenized_train = train_dataset.map(
@@ -40,6 +43,25 @@ def main() -> None:
         batched=True, 
         remove_columns=["text"]
     )
+    
+    def group_texts(examples):
+        # Concatenate all texts in this batch
+        concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
+        total_length = len(concatenated_examples[list(examples.keys())[0]])
+        
+        # Drop the small remainder at the end of the batch
+        if total_length >= max_seq_length:
+            total_length = (total_length // max_seq_length) * max_seq_length
+            
+        # Split by chunks of max_seq_length
+        result = {
+            k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
+            for k, t in concatenated_examples.items()
+        }
+        return result
+    
+    packed_train = tokenized_train.map(group_texts, batched=True)
+    packed_eval = tokenized_eval.map(group_texts, batched=True)
     
     # Model parameters
     n_layer = 4
@@ -129,8 +151,8 @@ def main() -> None:
     trainer = DiffusionTrainer(
         model_init=model_init,
         args=args,
-        train_dataset=tokenized_train,  # Placeholder for training dataset # type: ignore
-        eval_dataset=tokenized_eval,    # Placeholder for evaluation dataset # type: ignore
+        train_dataset=packed_train,  # Placeholder for training dataset # type: ignore
+        eval_dataset=packed_eval,    # Placeholder for evaluation dataset # type: ignore
         data_collator=data_collator,
         processing_class=tokenizer,
         callbacks=[TrainingInfoCallback(), eval_callback, seed_diffusion_curriculum_callback],
