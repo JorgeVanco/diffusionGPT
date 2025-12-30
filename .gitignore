@@ -20,3 +20,4 @@ wandb/
 
 # Output
 output/
+ray_results/
