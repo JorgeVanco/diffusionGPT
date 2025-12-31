@@ -17,3 +17,9 @@ checkpoints/
 
 # Logs
 wandb/
+logs/
+
+# Output
+output/
+ray_results/
+*.sqlite3

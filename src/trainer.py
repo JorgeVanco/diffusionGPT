@@ -1,0 +1,97 @@
+import torch
+import torch.nn.functional as F
+from transformers import Trainer
+
+from src.utils import mask_input_ids_
+
+class DiffusionTrainer(Trainer):
+    def compute_loss(self, model, inputs, return_outputs=False, **kwargs) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
+        if self.processing_class is None:
+            raise ValueError("Tokenizer was not passed to the trainer!")
+        
+        labels = inputs.pop("labels")
+        t = inputs.pop("t") # Timestep passed from collator
+        
+        # Forward pass
+        outputs = model(**inputs)
+        logits = outputs.logits
+        
+        # Set logit that corresponds to the mask token to -inf
+        logits[:, :, self.processing_class.mask_token_id] = torch.finfo(logits.dtype).min # type: ignore
+        
+        # Flatten for CrossEntropy
+        # logits: (B, L, V), labels: (B, L)
+        # Only compute loss on masked tokens (labels!= -100)
+        # Note: CrossEntropyLoss automatically ignores -100
+        per_token_loss = F.cross_entropy(logits.view(-1, self.model.config.vocab_size),  # type: ignore
+                                  labels.view(-1), reduction='none')
+        
+        # Reshape to (B, L) to apply time weighting
+        per_token_loss = per_token_loss.view(labels.shape)
+        
+        # Apply Loss Weighting (MDLM formulation)
+        # Assume linear schedule for example: w(t) = 1/t
+        # Real implementations use the exact derivative of the schedule
+        weights = 1.0 / (t + 1e-6)  # Avoid division by zero
+        
+        # Mask out the ignored tokens from the average
+        mask = (labels != -100).float()
+        weighted_loss = (per_token_loss * mask * weights.unsqueeze(-1)).sum() / (mask.sum() + 1e-6)
+        
+        return (weighted_loss, outputs) if return_outputs else weighted_loss
+    
+    
+class DiscreteDiffusionCollator:
+    def __init__(self, tokenizer, corruption_prob=0.1) -> None:
+        self.tokenizer = tokenizer
+        self.corruption_prob = corruption_prob
+        self.seed = 42
+        self.generator = torch.Generator().manual_seed(self.seed)
+        # Add a flag to control the curriculum
+        self.edit_stage_active = False
+
+    def __call__(self, batch) -> dict[str, torch.Tensor]:
+        batch_inputs = self.tokenizer.pad(
+            batch, 
+            padding=True, 
+            return_tensors="pt"
+        )
+        
+        input_ids = batch_inputs['input_ids']
+        attention_mask = batch_inputs['attention_mask']
+        
+        # Sample random timesteps for each example
+        t = torch.rand((input_ids.size(0),), device=input_ids.device, generator=self.generator)
+        
+        noisy_inputs = input_ids.clone()
+        
+        mask_matrix = mask_input_ids_(
+            noisy_inputs, 
+            mask_token_id=self.tokenizer.mask_token_id, 
+            mask_prob=t, 
+            generator=self.generator
+        )
+        labels = torch.full_like(input_ids, -100)
+        labels[mask_matrix] = input_ids[mask_matrix]    # Calculate loss on MASKS (Standard MDLM)
+        
+        if self.edit_stage_active:  # Apply Seed Diffusion Corruption Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
+            # Elegible for corruption
+            eligible_for_corruption = (~mask_matrix) & (attention_mask.bool())
+            
+            corruption_matrix = torch.rand(input_ids.shape, device=input_ids.device) < self.corruption_prob
+            corruption_mask = eligible_for_corruption & corruption_matrix
+            
+            # Generate random tokens for the corrupted positions
+            random_tokens = torch.randint(0, len(self.tokenizer), input_ids.shape, device=input_ids.device)
+            
+            # Apply Random Swaps
+            noisy_inputs[corruption_mask] = random_tokens[corruption_mask]
+        
+            labels[eligible_for_corruption] = input_ids[eligible_for_corruption] # Calculate loss on visible tokens (Seed Diffusion)
+        
+        return {
+            'input_ids': noisy_inputs,
+            'attention_mask': attention_mask,
+            'labels': labels,
+            't': t
+        }

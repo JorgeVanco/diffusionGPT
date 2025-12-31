@@ -7,11 +7,14 @@ requires-python = ">=3.11"
 dependencies = [
     "datasets>=4.1.1",
     "einops>=0.8.1",
+    "ipython>=9.8.0",
     "matplotlib>=3.10.7",
     "numpy>=2.3.3",
+    "optuna>=4.6.0",
+    "optuna-dashboard>=0.20.0",
     "scipy>=1.16.2",
     "torch>=2.8.0",
     "tqdm>=4.67.1",
-    "transformers>=4.56.2",
+    "transformers[torch]>=4.56.2",
     "wandb>=0.18.0",
 ]

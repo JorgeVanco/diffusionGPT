@@ -1,0 +1,51 @@
+# --- Model Arguments ---
+model_name_or_path: "answerdotai/ModernBERT-base"
+tokenizer_name_or_path: "gpt2"
+max_seq_length: 128
+hidden_size: 256
+num_hidden_layers: 4
+num_attention_heads: 4
+
+# --- Data Arguments ---
+dataset_name: "roneneldan/TinyStories"
+# max_train_samples: 5000    # Uncomment for quick debugging
+
+# --- Diffusion Arguments ---
+num_diffusion_steps: 50
+corruption_prob: 0.1
+
+# --- Training Arguments (Hugging Face Trainer) ---
+output_dir: "./output/" # base path (will be ./output/{run_name})
+overwrite_output_dir: true
+do_train: true
+
+# Optimization
+learning_rate: 2.0e-5
+weight_decay: 0.01
+per_device_train_batch_size: 16
+per_device_eval_batch_size: 16
+num_train_epochs: 3
+
+# Scheduler
+lr_scheduler_type: "warmup_stable_decay"
+warmup_steps: 500
+lr_scheduler_kwargs:
+  num_decay_steps: 10000  # Nested dictionary syntax
+
+# Evaluation & Saving
+eval_strategy: "steps"
+eval_steps: 1000
+save_strategy: "steps"
+save_steps: 1000
+load_best_model_at_end: true
+
+# Logging
+logging_strategy: "steps"
+logging_steps: 100
+report_to: "wandb"        # Changed from "none" so you can visualize the loss (recommended)
+run_name: "diffusion-baseline-v1"
+auto_naming: true
+
+# Misc
+remove_unused_columns: true
+seed: 42
