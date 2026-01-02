@@ -29,6 +29,8 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         # We need to convert dict to list of strings for parse_args_into_dataclasses if we were using sys.argv,
         # but HfArgumentParser has a parse_dict method!
         model_args, data_args, training_args = parser.parse_dict(override_args)
+    elif len(sys.argv) == 2 and sys.argv[1].endswith(".yaml"):
+        model_args, data_args, training_args = parser.parse_yaml_file(os.path.abspath(sys.argv[1]))
     elif len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
         # Allow loading from a JSON config file: python train.py config.json
         model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))

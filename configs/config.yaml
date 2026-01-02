@@ -41,6 +41,7 @@ load_best_model_at_end: true
 
 # Logging
 logging_strategy: "steps"
+include_num_input_tokens_seen: "non_padding"
 logging_steps: 100
 report_to: "wandb"        # Changed from "none" so you can visualize the loss (recommended)
 run_name: "diffusion-baseline-v1"

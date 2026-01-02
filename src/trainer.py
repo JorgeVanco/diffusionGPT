@@ -5,6 +5,9 @@ from transformers import Trainer
 from src.utils import mask_input_ids_
 
 class DiffusionTrainer(Trainer):
+    def __init__(self, *args, **kwargs) -> None:
+        super().__init__(*args, **kwargs)
+    
     def compute_loss(self, model, inputs, return_outputs=False, **kwargs) -> tuple[torch.Tensor, torch.Tensor] | torch.Tensor:
         if self.processing_class is None:
             raise ValueError("Tokenizer was not passed to the trainer!")
@@ -39,6 +42,11 @@ class DiffusionTrainer(Trainer):
         weighted_loss = (per_token_loss * mask * weights.unsqueeze(-1)).sum() / (mask.sum() + 1e-6)
         
         return (weighted_loss, outputs) if return_outputs else weighted_loss
+    
+    def log(self, logs: dict[str, float], start_time: float | None = None) -> None:
+        logs["edit_stage_active"] = int(self.data_collator.edit_stage_active or 0)  # type: ignore
+        logs["corruption_prob"] = self.data_collator.corruption_prob * logs["edit_stage_active"]  # type: ignore
+        super().log(logs, start_time)
     
     
 class DiscreteDiffusionCollator:
