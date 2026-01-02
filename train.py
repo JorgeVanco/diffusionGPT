@@ -159,7 +159,10 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         tokenizer=tokenizer,
         pipeline_cls=TextDiffusionPipeline
     )
-    seed_diffusion_curriculum_callback = SeedDiffusionCurriculumCallback()
+    seed_diffusion_curriculum_callback = SeedDiffusionCurriculumCallback(
+        edit_stage_start=training_args.edit_stage_start,
+        anneal_corruption=training_args.anneal_corruption
+    )
     
     trainer = DiffusionTrainer(
         model_init=model_init,

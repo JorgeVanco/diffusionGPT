@@ -86,18 +86,31 @@ class GenerativeEvalCallback(TrainerCallback):
 
 
 class SeedDiffusionCurriculumCallback(TrainerCallback):
-    def __init__(self) -> None:
+    def __init__(self, edit_stage_start: float = 0.8, anneal_corruption: bool = True) -> None:
         self.trainer: None | Trainer = None
+        self.edit_stage_start: float = edit_stage_start
+        self.anneal_corruption: bool = anneal_corruption
 
     def on_step_begin(self, args, state, control, **kwargs) -> None:
         if self.trainer is None:
             raise ValueError("Trainer not set in SeedDiffusionCurriculumCallback.")
         
         # Check if we are past 80% of training (Two stage curriculum for Robust Diffusion Training - Section 3.1 in Seed Diffusion https://arxiv.org/pdf/2508.02193)
-        threshold_step = state.max_steps * 0.8
+        threshold_step = state.max_steps * self.edit_stage_start
         
         if state.global_step >= threshold_step:
             if hasattr(self.trainer.data_collator, "edit_stage_active"):
                 if not self.trainer.data_collator.edit_stage_active:    # type: ignore
                     print(f"\n[Curriculum] Step {state.global_step}: Switching to Edit-Based Training Stage! 🔀")
                     self.trainer.data_collator.edit_stage_active = True # type: ignore
+            
+            target_corruption = getattr(args, "corruption_prob", 0.1)
+            if self.anneal_corruption:
+                progress = state.global_step / state.max_steps
+                edit_progress = (progress - self.edit_stage_start) / ((1.0 + self.edit_stage_start) / 2 - self.edit_stage_start)
+                
+                
+                current_prob = min(target_corruption * edit_progress, target_corruption)
+                self.trainer.data_collator.corruption_prob = current_prob # type: ignore
+            else:
+                self.trainer.data_collator.corruption_prob = target_corruption # type: ignore

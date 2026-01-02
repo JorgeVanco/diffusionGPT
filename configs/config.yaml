@@ -13,6 +13,8 @@ dataset_name: "roneneldan/TinyStories"
 # --- Diffusion Arguments ---
 num_diffusion_steps: 50
 corruption_prob: 0.1
+edit_stage_start: 0.8
+anneal_corruption: true
 
 # --- Training Arguments (Hugging Face Trainer) ---
 output_dir: "./output/" # base path (will be ./output/{run_name})

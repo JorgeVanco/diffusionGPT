@@ -16,6 +16,14 @@ class DiffusionTrainingArguments(TrainingArguments):
         default=False,
         metadata={"help": "If true, the output_dir will be automatically named based on hyperparameters."}
     )
+    edit_stage_start: float = field(
+        default=0.8,
+        metadata={"help": "Fraction of training after which to start the edit-based training stage."}
+    )
+    anneal_corruption: bool = field(
+        default=True,
+        metadata={"help": "Whether to anneal the corruption probability during the edit stage."}
+    )
 
     
 @dataclass
