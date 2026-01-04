@@ -24,6 +24,10 @@ class DiffusionTrainingArguments(TrainingArguments):
         default=True,
         metadata={"help": "Whether to anneal the corruption probability during the edit stage."}
     )
+    target_param_data_ratio: Optional[int] = field(
+        default=None,
+        metadata={"help": "If set, adjusts the number of training samples to achieve the target parameter-to-data ratio."}
+    )
 
     
 @dataclass
@@ -54,11 +58,19 @@ class DataArguments:
         default="roneneldan/TinyStories",
         metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
+    dataset_subset_name: Optional[str] = field(
+        default=None,
+        metadata={"help": "The subset name of the dataset to use (via the datasets library)."}
+    )
+    streaming: bool = field(
+        default=False, 
+        metadata={"help": "If True, streams data (good for FineWeb). If False, downloads and caches (good for TinyStories)."}
+    )
     max_train_samples: Optional[int] = field(
-        default=10000,
+        default=None,
         metadata={"help": "Truncate the number of training examples."}
     )
     max_eval_samples: Optional[int] = field(
-        default=1000,
+        default=None,
         metadata={"help": "Truncate the number of evaluation examples."}
     )

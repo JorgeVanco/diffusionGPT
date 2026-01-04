@@ -8,7 +8,9 @@ num_attention_heads: 4
 
 # --- Data Arguments ---
 dataset_name: "roneneldan/TinyStories"
-# max_train_samples: 5000    # Uncomment for quick debugging
+max_train_samples: 5000    # Uncomment for quick debugging
+# max_steps: 5000
+# dataset_subset_name: sample-100BT
 
 # --- Diffusion Arguments ---
 num_diffusion_steps: 50
@@ -19,7 +21,8 @@ anneal_corruption: true
 # --- Training Arguments (Hugging Face Trainer) ---
 output_dir: "./output/" # base path (will be ./output/{run_name})
 overwrite_output_dir: true
-do_train: true
+do_train: false
+do_eval: false
 
 # Optimization
 learning_rate: 2.0e-5
@@ -30,22 +33,22 @@ num_train_epochs: 3
 
 # Scheduler
 lr_scheduler_type: "warmup_stable_decay"
-warmup_steps: 500
+warmup_steps: 50
 lr_scheduler_kwargs:
-  num_decay_steps: 10000  # Nested dictionary syntax
+  num_decay_steps: 100  # Nested dictionary syntax
 
 # Evaluation & Saving
 eval_strategy: "steps"
-eval_steps: 1000
+eval_steps: 2500
 save_strategy: "steps"
-save_steps: 1000
+save_steps: 5000
 load_best_model_at_end: true
 
 # Logging
 logging_strategy: "steps"
 include_num_input_tokens_seen: "non_padding"
 logging_steps: 100
-report_to: "wandb"        # Changed from "none" so you can visualize the loss (recommended)
+report_to: "wandb"
 run_name: "diffusion-baseline-v1"
 auto_naming: true
 

@@ -15,6 +15,9 @@ class TrainingInfoCallback(TrainerCallback):
         total_params = sum(p.numel() for p in model.parameters())
         trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
         
+        if args.target_param_data_ratio is not None:
+            args.max_steps = total_params * args.target_param_data_ratio
+            
         # Calculate Dataset Size
         dataset_size = "Unknown"
         if train_dataloader:
@@ -37,6 +40,7 @@ class TrainingInfoCallback(TrainerCallback):
         print(f"• Total Epochs:        {args.num_train_epochs}")
         print(f"• Batch Size (Train):  {args.per_device_train_batch_size}")
         print(f"• Learning Rate:       {args.learning_rate}")
+        print(f"• Data Param Ratio:    {args.target_param_data_ratio if args.target_param_data_ratio is not None else 'N/A'}")
         print(f"• Total Steps:         {state.max_steps}")
         print(f"• Warmup Steps:        {args.warmup_steps}")
         print(f"• Logging to:          {args.output_dir}")

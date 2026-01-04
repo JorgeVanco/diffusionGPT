@@ -1,0 +1,65 @@
+# --- Model Arguments ---
+model_name_or_path: "answerdotai/ModernBERT-base"
+tokenizer_name_or_path: "gpt2"
+# Nanochat Logic: 
+# depth = 20
+# model_dim = depth * 64 = 1280
+# num_heads = (model_dim + 127) // 128 = 10
+max_seq_length: 2048
+hidden_size: 1280
+num_hidden_layers: 20
+num_attention_heads: 10
+
+# --- Data Arguments ---
+dataset_name: "HuggingFaceFW/fineweb"
+# max_train_samples: 5000
+dataset_subset_name: sample-100BT
+streaming: true
+
+# --- Diffusion Arguments ---
+num_diffusion_steps: 100
+corruption_prob: 0.1
+edit_stage_start: 0.8
+anneal_corruption: true
+
+# --- Training Arguments (Hugging Face Trainer) ---
+output_dir: "./output/" # base path (will be ./output/{run_name})
+overwrite_output_dir: true
+do_train: true
+do_eval: true
+
+# Optimization
+bf16: true
+learning_rate: 2.0e-4
+weight_decay: 0.01
+target_param_data_ratio: 20
+# max_steps: 5000 # 20 * 590,363,220 [tokens] /  (8 * 32 * 2048) [tokens / step] ~ 22.520 [steps]
+per_device_train_batch_size: 8
+gradient_accumulation_steps: 32 # 8 * 32 * 2048 ~ 0.5M tokens per step (matches nanochat total_batch_size)
+num_train_epochs: 1
+torch_compile: true
+
+# Scheduler
+lr_scheduler_type: "warmup_stable_decay"
+warmup_steps: 500
+lr_scheduler_kwargs:
+  num_decay_steps: 2500  # Nested dictionary syntax
+
+# Evaluation & Saving
+eval_strategy: "steps"
+eval_steps: 5000
+save_strategy: "steps"
+save_steps: 5000
+load_best_model_at_end: true
+
+# Logging
+logging_strategy: "steps"
+include_num_input_tokens_seen: "non_padding"
+logging_steps: 100
+report_to: "wandb"
+run_name: "diffusion-baseline-nanogpt"
+auto_naming: true
+
+# Misc
+remove_unused_columns: true
+seed: 42
