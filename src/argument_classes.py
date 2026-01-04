@@ -55,6 +55,10 @@ class DataArguments:
         metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
     max_train_samples: Optional[int] = field(
-        default=None,
-        metadata={"help": "For debugging purposes or quicker training, truncate the number of training examples."}
+        default=10000,
+        metadata={"help": "Truncate the number of training examples."}
+    )
+    max_eval_samples: Optional[int] = field(
+        default=1000,
+        metadata={"help": "Truncate the number of evaluation examples."}
     )

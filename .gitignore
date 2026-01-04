@@ -23,3 +23,4 @@ logs/
 output/
 ray_results/
 *.sqlite3
+trainer_output/
