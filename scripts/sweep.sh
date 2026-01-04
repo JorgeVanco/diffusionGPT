@@ -1,8 +1,8 @@
 #!/bin/bash
 
 # 1. Configuration
-NUM_GPUS=4
-TRIALS_PER_GPU=1
+NUM_GPUS=7
+TRIALS_PER_GPU=2
 SCRIPT_NAME="sweep.py"
 
 # Calculate total trials
@@ -28,7 +28,8 @@ echo "---------------------------------------------------"
 mkdir -p logs
 
 # 4. Launch Loop
-for ((i=0; i<NUM_GPUS; i++)); do
+start_i=1
+for ((i=start_i; i<NUM_GPUS+start_i; i++)); do
     echo "  -> Starting worker $i on GPU $i (Log: logs/worker_$i.log)"
 
     CUDA_VISIBLE_DEVICES=$i uv run $SCRIPT_NAME --n_trials $TRIALS_PER_GPU > logs/worker_$i.log 2>&1 &

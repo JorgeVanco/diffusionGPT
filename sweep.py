@@ -8,7 +8,7 @@ from train import main as train_main
 
 def objective(trial) -> float:
     # 1. Hyperparameter Space
-    learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-4, log=True)
+    learning_rate = trial.suggest_float("learning_rate", 1e-5, 5e-3, log=True)
     num_diffusion_steps = trial.suggest_categorical("num_diffusion_steps", [25, 50, 100])
     corruption_prob = trial.suggest_float("corruption_prob", 0.1, 0.3)
     gradient_accumulation_steps = trial.suggest_categorical("gradient_accumulation_steps", [1, 2])
@@ -19,10 +19,13 @@ def objective(trial) -> float:
         "do_eval": True,
         "logging_steps": 50,
         "save_steps": 5000,
-        "eval_steps": 500,
+        "eval_steps": 1000,
         # "max_train_samples": 5000,
-        "max_seq_length": 128,
-        "num_train_epochs": 1, # Keep epochs low for sweeping
+        "max_seq_length": 512,
+        "hidden_size": 512,
+        "num_hidden_layers": 6,
+        "num_attention_heads": 4,
+        "num_train_epochs": 3, # Keep epochs low for sweeping
         "report_to": "wandb",  # or "none"
         # "run_name": f"sweep_trial_{tune.get_context().get_trial_id()}",
         "auto_naming": True,
@@ -49,9 +52,9 @@ def objective(trial) -> float:
     args["num_diffusion_steps"] = num_diffusion_steps
     args["corruption_prob"] = corruption_prob
     args["gradient_accumulation_steps"] = gradient_accumulation_steps
-    args["max_steps"] = 5000 # Limit steps for faster sweeps
-    args["warmup_steps"] = 100
-    args["lr_scheduler_kwargs"] = {"num_decay_steps": 1000}
+    # args["max_steps"] = 5000 # Limit steps for faster sweeps
+    # args["warmup_steps"] = 100
+    # args["lr_scheduler_kwargs"] = {"num_decay_steps": 1000}
     
     # Unique names and cleanup
     args["run_name"] = f"optuna_trial_{trial.number}"
@@ -76,7 +79,7 @@ if __name__ == "__main__":
     args = parser.parse_args()
     
     # Create the study storage (shared by all workers)
-    study_name = "diffusion_sweep_v1"
+    study_name = "diffusion_sweep_v2"
     storage_url = "sqlite:///db.sqlite3"
     
     sampler = TPESampler(multivariate=True, n_startup_trials=10)
