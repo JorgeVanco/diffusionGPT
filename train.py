@@ -217,6 +217,7 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     # 8. Train & Evaluate
     if training_args.do_train:
         trainer.train()
+        trainer.save_model()
 
     metrics = trainer.evaluate()
     
