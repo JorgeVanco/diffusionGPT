@@ -6,6 +6,7 @@ from transformers import (
     set_seed,
 )
 import torch
+from accelerate import Accelerator
 
 import os
 import sys
@@ -50,27 +51,53 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     
     tokenizer = load_tokenizer(model_args)
     
-    # train_dataset, eval_dataset = load_datasets(model_args, data_args, training_args, tokenizer)
+    accelerator = Accelerator()
+    
+    with accelerator.main_process_first():
+        train_dataset, eval_dataset = load_datasets(model_args, data_args, training_args, tokenizer)
 
-    def model_init():
-        # Model initialization
-        from transformers import AutoModelForMaskedLM
+    # def model_init():
+    # Model initialization
+    from transformers import AutoModelForMaskedLM
 
-        config = AutoConfig.from_pretrained(model_args.model_name_or_path)
-        config.hidden_size = model_args.hidden_size
-        config.num_hidden_layers = model_args.num_hidden_layers
-        config.num_attention_heads = model_args.num_attention_heads
-        config.intermediate_size = model_args.hidden_size * 4
-        config.vocab_size = len(tokenizer)
-        config.seq_length = model_args.max_seq_length
-        config.mask_token_id = tokenizer.mask_token_id
-        config.pad_token_id = tokenizer.pad_token_id # type: ignore
+    config = AutoConfig.from_pretrained(model_args.model_name_or_path)
+    config.hidden_size = model_args.hidden_size
+    config.num_hidden_layers = model_args.num_hidden_layers
+    config.num_attention_heads = model_args.num_attention_heads
+    config.intermediate_size = model_args.hidden_size * 4
+    config.vocab_size = len(tokenizer)
+    config.seq_length = model_args.max_seq_length
+    config.mask_token_id = tokenizer.mask_token_id
+    config.pad_token_id = tokenizer.pad_token_id # type: ignore
+    
+    config.use_cache = False
+    
+    model = AutoModelForMaskedLM.from_config(config)
+
+    if training_args.target_param_data_ratio is not None:
+        total_params = sum(p.numel() for p in model.parameters())
         
-        config.use_cache = False
+        # 1. Calculate Total Tokens needed (e.g., Chinchilla: 20 * Params)
+        total_tokens_needed = total_params * training_args.target_param_data_ratio
         
-        model = AutoModelForMaskedLM.from_config(config)
-        return model
-
+        # 2. Calculate Effective Batch Size (Batch x Grads x GPUs)
+        effective_batch_size = (
+            training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps * training_args.world_size
+        )
+        
+        # 3. Calculate Tokens per Step (Batch x SeqLen)
+        tokens_per_step = effective_batch_size * model_args.max_seq_length
+        
+        # 4. Set max_steps
+        calculated_steps = int(total_tokens_needed / tokens_per_step)
+        training_args.max_steps = calculated_steps
+        
+        print(f"\n🚀 DYNAMIC CONFIGURATION:")
+        print(f"• Params: {total_params:,}")
+        print(f"• Target Ratio: {training_args.target_param_data_ratio}")
+        print(f"• Total Tokens Needed: {total_tokens_needed:,}")
+        print(f"• Tokens Per Step: {tokens_per_step:,}")
+        print(f"• Setting max_steps to: {calculated_steps:,}\n")
     
     os.environ["WANDB_PROJECT"] = "text-diffusion"
     
@@ -100,7 +127,7 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     )
     
     trainer = DiffusionTrainer(
-        model_init=model_init,
+        model=model,
         args=training_args,
         train_dataset=train_dataset,  # Placeholder for training dataset # type: ignore
         eval_dataset=eval_dataset,    # Placeholder for evaluation dataset # type: ignore

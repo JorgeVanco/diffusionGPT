@@ -49,10 +49,24 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         }
         return result
     
+    if "~" in str(data_args.load_from_disk):
+        data_args.load_from_disk = os.path.expanduser(data_args.load_from_disk)
+    if data_args.load_from_disk and os.path.exists(data_args.load_from_disk):
+        logging.info(f"📥 Loading dataset from disk at {data_args.load_from_disk}...")
+        dataset_dict = load_from_disk(data_args.load_from_disk)
+        # Process
+        with training_args.main_process_first(desc="tokenizing"):
+            tokenized = dataset_dict.map(tokenize_function, batched=True, num_proc=os.cpu_count())
+        
+        with training_args.main_process_first(desc="grouping"):
+            lm_datasets = tokenized.map(group_texts, batched=True, batch_size=1000, num_proc=os.cpu_count())
+        train_dataset = lm_datasets["train"]
+        eval_dataset = lm_datasets["test"]
+        return train_dataset, eval_dataset
     # ----------------------------------------------------------------------------
     # PATH A: STATIC (TinyStories)
     # ----------------------------------------------------------------------------
-    if not data_args.streaming:
+    elif not data_args.streaming:
         logging.info(f"📚 Loading {data_args.dataset_name} (Static)...")
 
         # Load & Split

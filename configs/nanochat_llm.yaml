@@ -11,6 +11,7 @@ num_hidden_layers: 20
 num_attention_heads: 10
 
 # --- Data Arguments ---
+load_from_disk: "~/workdata/fineweb-sample-100BT"
 dataset_name: "HuggingFaceFW/fineweb"
 # max_train_samples: 5000
 dataset_subset_name: sample-100BT

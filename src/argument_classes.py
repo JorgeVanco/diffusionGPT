@@ -74,3 +74,7 @@ class DataArguments:
         default=None,
         metadata={"help": "Truncate the number of evaluation examples."}
     )
+    load_from_disk: Optional[str] = field(
+        default=None,
+        metadata={"help": "If set, loads the dataset from the specified local disk path."}
+    )
