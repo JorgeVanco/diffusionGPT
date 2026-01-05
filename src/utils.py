@@ -1,4 +1,12 @@
 import torch
+from transformers import (
+    HfArgumentParser, 
+)
+from typing import Optional, Dict, Any
+import sys
+
+from src.argument_classes import DiffusionTrainingArguments, ModelArguments, DataArguments
+
 
 def mask_input_ids_(input_ids: torch.Tensor, mask_token_id: int, mask_prob: torch.Tensor, remasking_mask: torch.Tensor | None = None, generator: torch.Generator | None = None) -> torch.Tensor:
     """In-place mask input_ids with given mask probability.
@@ -164,3 +172,23 @@ def animate_diffusion(pipeline_output, tokenizer, interval=0.2, sample_idx=0):
             time.sleep(interval)
         else:
             print(f"\n{GREEN}✨ Generation Complete!{RESET}")
+            
+            
+def get_args(override_args: Optional[Dict[str, Any]] = None) -> tuple[ModelArguments, DataArguments, DiffusionTrainingArguments]:
+    parser = HfArgumentParser((ModelArguments, DataArguments, DiffusionTrainingArguments)) # type: ignore
+    
+    if override_args is not None:
+        # If called from sweep.py, we inject the dictionary as arguments
+        # We need to convert dict to list of strings for parse_args_into_dataclasses if we were using sys.argv,
+        # but HfArgumentParser has a parse_dict method!
+        model_args, data_args, training_args = parser.parse_dict(override_args)
+    elif len(sys.argv) == 2 and sys.argv[1].endswith(".yaml"):
+        model_args, data_args, training_args = parser.parse_yaml_file(os.path.abspath(sys.argv[1]))
+    elif len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
+        # Allow loading from a JSON config file: python train.py config.json
+        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
+    else:
+        # Standard CLI parsing
+        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
+    
+    return model_args, data_args, training_args

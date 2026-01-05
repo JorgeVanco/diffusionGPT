@@ -1,8 +1,5 @@
-from datasets import load_dataset, load_from_disk, Dataset, get_dataset_split_names, DatasetDict
 from transformers import (
-    AutoTokenizer, 
     AutoConfig, 
-    HfArgumentParser, 
     set_seed,
 )
 import torch
@@ -12,34 +9,20 @@ import os
 import sys
 import logging
 from datetime import datetime
-from itertools import chain
 from typing import Optional, Dict, Any
 
 from src.data_utils import load_tokenizer, load_datasets
+from src.utils import get_args
 from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
 from src.trainer_callbacks import TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
 from src.pipeline import TextDiffusionPipeline
-from src.argument_classes import DiffusionTrainingArguments, ModelArguments, DataArguments
 
 torch.set_float32_matmul_precision('high')
 
 def main(override_args: Optional[Dict[str, Any]] = None) -> float:
-    parser = HfArgumentParser((ModelArguments, DataArguments, DiffusionTrainingArguments)) # type: ignore
     
-    if override_args is not None:
-        # If called from sweep.py, we inject the dictionary as arguments
-        # We need to convert dict to list of strings for parse_args_into_dataclasses if we were using sys.argv,
-        # but HfArgumentParser has a parse_dict method!
-        model_args, data_args, training_args = parser.parse_dict(override_args)
-    elif len(sys.argv) == 2 and sys.argv[1].endswith(".yaml"):
-        model_args, data_args, training_args = parser.parse_yaml_file(os.path.abspath(sys.argv[1]))
-    elif len(sys.argv) == 2 and sys.argv[1].endswith(".json"):
-        # Allow loading from a JSON config file: python train.py config.json
-        model_args, data_args, training_args = parser.parse_json_file(json_file=os.path.abspath(sys.argv[1]))
-    else:
-        # Standard CLI parsing
-        model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-        
+    model_args, data_args, training_args = get_args(override_args)
+
     # Setup Logging
     logging.basicConfig(
         format="%(asctime)s - %(levelname)s - %(name)s - %(message)s",
