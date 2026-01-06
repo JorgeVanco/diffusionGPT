@@ -5,46 +5,50 @@ from src.utils import _dispatch_table_logging
 
 class TrainingInfoCallback(TrainerCallback):
     def on_train_begin(self, args, state, control, **kwargs) -> None:
-        model = kwargs.get('model')
-        train_dataloader = kwargs.get('train_dataloader')
-        
-        if model is None:
-            raise ValueError("Model not found in on_train_begin kwargs.")
-        
-        # Calculate Parameter Count
-        total_params = sum(p.numel() for p in model.parameters())
-        trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-        
-        if args.target_param_data_ratio is not None:
-            args.max_steps = total_params * args.target_param_data_ratio
+        if state.is_world_process_zero:
+            model = kwargs.get('model')
+            train_dataloader = kwargs.get('train_dataloader')
             
-        # Calculate Dataset Size
-        dataset_size = "Unknown"
-        if train_dataloader:
-            try:
-                # Approximate if it's a generator, exact if it has __len__
-                dataset_size = len(train_dataloader.dataset) 
-            except:
-                dataset_size = len(train_dataloader) * args.per_device_train_batch_size
+            if model is None:
+                raise ValueError("Model not found in on_train_begin kwargs.")
+            
+            # Calculate Parameter Count
+            total_params = sum(p.numel() for p in model.parameters())
+            trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
+            
+            if args.target_param_data_ratio is not None:
+                args.max_steps = total_params * args.target_param_data_ratio
+                
+            # # Calculate Dataset Size
+            # dataset_size = "Unknown (Streaming)"
+            # if train_dataloader:
+            #     try:
+            #         # Check if the dataset has a known length (Map-style)
+            #         if hasattr(train_dataloader.dataset, "__len__"):
+            #             dataset_size = f"{len(train_dataloader.dataset):,}"
+            #         else:
+            #             dataset_size = "Infinite (Streaming)"
+            #     except (TypeError, AttributeError, NotImplementedError):
+            #         dataset_size = "Infinite (Streaming)"
 
-        print("\n" + "="*40)
-        print("🚀 TRAINING STARTED - CONFIGURATION")
-        print("="*40)
-        print(f"• Model Architecture:  {model.config.architectures[0] if model.config.architectures else 'Custom'}")
-        print(f"• Total Parameters:    {total_params:,} ({total_params/1e6:.1f}M)")
-        print(f"• Trainable Params:    {trainable_params:,} ({trainable_params/1e6:.1f}M)")
-        print(f"• Max Seq Length:      {model.config.seq_length if hasattr(model.config, 'seq_length') else 'Unknown'}")
-        print(f"• Dataset Size:        {dataset_size:,} examples")
-        print(f"• Vocabulary Size:     {model.config.vocab_size}")
-        print("-" * 40)
-        print(f"• Total Epochs:        {args.num_train_epochs}")
-        print(f"• Batch Size (Train):  {args.per_device_train_batch_size}")
-        print(f"• Learning Rate:       {args.learning_rate}")
-        print(f"• Data Param Ratio:    {args.target_param_data_ratio if args.target_param_data_ratio is not None else 'N/A'}")
-        print(f"• Total Steps:         {state.max_steps}")
-        print(f"• Warmup Steps:        {args.warmup_steps}")
-        print(f"• Logging to:          {args.output_dir}")
-        print("="*40 + "\n")
+            print("\n" + "="*40)
+            print("🚀 TRAINING STARTED - CONFIGURATION")
+            print("="*40)
+            print(f"• Model Architecture:  {model.config.architectures[0] if model.config.architectures else 'Custom'}")
+            print(f"• Total Parameters:    {total_params:,} ({total_params/1e6:.1f}M)")
+            print(f"• Trainable Params:    {trainable_params:,} ({trainable_params/1e6:.1f}M)")
+            print(f"• Max Seq Length:      {model.config.seq_length if hasattr(model.config, 'seq_length') else 'Unknown'}")
+            # print(f"• Dataset Size:        {dataset_size:,} examples")
+            print(f"• Vocabulary Size:     {model.config.vocab_size}")
+            print("-" * 40)
+            print(f"• Total Epochs:        {args.num_train_epochs}")
+            print(f"• Batch Size (Train):  {args.per_device_train_batch_size}")
+            print(f"• Learning Rate:       {args.learning_rate}")
+            print(f"• Data Param Ratio:    {args.target_param_data_ratio if args.target_param_data_ratio is not None else 'N/A'}")
+            print(f"• Total Steps:         {state.max_steps}")
+            print(f"• Warmup Steps:        {args.warmup_steps}")
+            print(f"• Logging to:          {args.output_dir}")
+            print("="*40 + "\n")
 
 
 class GenerativeEvalCallback(TrainerCallback):
@@ -55,38 +59,39 @@ class GenerativeEvalCallback(TrainerCallback):
         self.trainer: None | Trainer = None
 
     def on_evaluate(self, args, state, control, **kwargs) -> None:
-        # The Trainer passes the 'model' to this method automatically
-        model = kwargs.get("model")
-        
-        if model is None:
-            print("⚠️ Warning: No model found in on_evaluate kwargs. Skipping generation.")
-            return
-        
-        # Instantiate the pipeline dynamically using the current model
-        pipe = self.pipeline_cls(
-            model=model, 
-            tokenizer=self.tokenizer,
-            device=model.device 
-        )
-        
-        steps = getattr(args, "num_diffusion_steps", 10)
-        print(f"Running generative evaluation with {steps} steps...")
-        pipe_outputs = pipe(self.prompts, num_steps=steps)
-        outputs = [o["decoded_texts"][0] for o in pipe_outputs]
-                
-        if self.trainer:
-            _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
-        else:
-            print("⚠️ Warning: Trainer not set in GenerativeEvalCallback. Skipping logging.")
-        
-        print("\n" + "="*40)
-        print("🧪 EVALUATION COMPLETED")
-        print(f"• Step: {state.global_step}")
-        print(f"• Eval Loss: {state.log_history[-1]['eval_loss']:.4f}")
-        print("• Sample Outputs:")
-        for i, output in enumerate(outputs):
-            print(f"[{i}] {output}")
-        print("="*40 + "\n")
+        if state.is_world_process_zero:
+            # The Trainer passes the 'model' to this method automatically
+            model = kwargs.get("model")
+            
+            if model is None:
+                print("⚠️ Warning: No model found in on_evaluate kwargs. Skipping generation.")
+                return
+            
+            # Instantiate the pipeline dynamically using the current model
+            pipe = self.pipeline_cls(
+                model=model, 
+                tokenizer=self.tokenizer,
+                device=model.device 
+            )
+            
+            steps = getattr(args, "num_diffusion_steps", 10)
+            print(f"Running generative evaluation with {steps} steps...")
+            pipe_outputs = pipe(self.prompts, num_steps=steps)
+            outputs = [o["decoded_texts"][0] for o in pipe_outputs]
+                    
+            if self.trainer:
+                _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
+            else:
+                print("⚠️ Warning: Trainer not set in GenerativeEvalCallback. Skipping logging.")
+            
+            print("\n" + "="*40)
+            print("🧪 EVALUATION COMPLETED")
+            print(f"• Step: {state.global_step}")
+            print(f"• Eval Loss: {state.log_history[-1]['eval_loss']:.4f}")
+            print("• Sample Outputs:")
+            for i, output in enumerate(outputs):
+                print(f"[{i}] {output}")
+            print("="*40 + "\n")
 
 
 class SeedDiffusionCurriculumCallback(TrainerCallback):
