@@ -35,7 +35,11 @@ class DiffusionTrainer(Trainer):
         # Apply Loss Weighting (MDLM formulation)
         # Assume linear schedule for example: w(t) = 1/t
         # Real implementations use the exact derivative of the schedule
-        weights = 1.0 / (t + 1e-6)  # Avoid division by zero
+        weights = 1.0 / (t + 1e-6)  # Avoid division by 
+        
+        time_weight_mask = inputs.pop("time_weight_mask", None)
+        if time_weight_mask is not None:
+            weights = weights * time_weight_mask + 1.0 * (1.0 - time_weight_mask)
         
         # Mask out the ignored tokens from the average
         mask = (labels != -100).float()
@@ -82,6 +86,11 @@ class DiscreteDiffusionCollator:
         labels = torch.full_like(input_ids, -100)
         labels[mask_matrix] = input_ids[mask_matrix]    # Calculate loss on MASKS (Standard MDLM)
         
+        # Mask for time-weighting application
+        # 1.0 = Apply w(t) (Standard Mask Loss)
+        # 0.0 = Apply 1.0  (Edit/Reconstruction Loss)
+        time_weight_mask = mask_matrix.float()
+        
         if self.edit_stage_active:  # Apply Seed Diffusion Corruption Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
             # Elegible for corruption
             eligible_for_corruption = (~mask_matrix) & (attention_mask.bool())
@@ -101,5 +110,6 @@ class DiscreteDiffusionCollator:
             'input_ids': noisy_inputs,
             'attention_mask': attention_mask,
             'labels': labels,
-            't': t
+            't': t,
+            'time_weight_mask': time_weight_mask
         }
