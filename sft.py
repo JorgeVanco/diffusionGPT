@@ -88,7 +88,7 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     
     # 8. Train & Evaluate
     if training_args.do_train:
-        trainer.train()
+        trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         trainer.save_model()
 
     metrics = trainer.evaluate()

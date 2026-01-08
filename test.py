@@ -22,7 +22,7 @@ from src.pipeline import TextDiffusionPipeline
 from src.utils import animate_diffusion
 
 # Instead of "bert-base-uncased", point to your folder
-checkpoint_path = "./output/checkpoint-final"
+checkpoint_path = "./output/layers6_embd512_seq512_diff100_lr0.0004725735401380809_1231_1905/checkpoint-20000"
 
 # Load exactly as you would a public model
 model = AutoModelForMaskedLM.from_pretrained(checkpoint_path)
@@ -50,10 +50,37 @@ from IPython.display import clear_output
 pipe = TextDiffusionPipeline(model=model, tokenizer=tokenizer)
 prompt = "Once upon a time,"
 
-print("Starting Real-Time Diffusion...\n")
+# print("Starting Real-Time Diffusion...\n")
 
-# Use the new streaming method
-generator = pipe.stream_generation(prompt, num_steps=50, max_length=128)
+# # Use the new streaming method
+# generator = pipe.stream_generation(prompt, num_steps=50, max_length=128)
+
+# for step, text in enumerate(generator):
+#     # --- VISUALIZATION LOGIC ---
+    
+#     # Method A: For Jupyter Notebooks (flicker-free update)
+#     # clear_output(wait=True)
+#     # print(f"Step {step}:\n{text}")
+    
+#     # Method B: For Terminal (Matrix style)
+#     os.system('cls' if os.name == 'nt' else 'clear') 
+    
+#     # Colorize MASKs for effect
+#     colored_text = text.replace("<mask>", "\033[91m█\033[0m") # Red blocks for masks
+    
+#     print(f"Step {step:02d}")
+#     print("-" * 40)
+#     print(colored_text)
+#     print("-" * 40)
+    
+#     # time.sleep(0.05) # Add small delay to see the animation
+
+# print("\nDone!")
+
+generator = pipe.stream_semi_autoregressive_generate(
+    input_text=prompt, block_size = 256, max_length = 1024)
+print("\nSemi-Autoregressive Generation Result:")
+# print(out)
 
 for step, text in enumerate(generator):
     # --- VISUALIZATION LOGIC ---
@@ -74,5 +101,8 @@ for step, text in enumerate(generator):
     print("-" * 40)
     
     # time.sleep(0.05) # Add small delay to see the animation
-
-print("\nDone!")
+    
+    
+# out = pipe.semi_autoregressive_generate(
+#     input_text="Once upon a time,", block_size = 64, max_length = 512)
+# print("Final Output:\n", out['decoded_texts'][0])
