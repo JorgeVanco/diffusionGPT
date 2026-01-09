@@ -15,9 +15,22 @@ class DiffusionTrainer(Trainer):
         labels = inputs.pop("labels")
         t = inputs.pop("t") # Timestep passed from collator
         
+        if self.args.bf16:
+            dtype = torch.bfloat16
+            do_autocast = True
+        elif self.args.fp16:
+            dtype = torch.float16
+            do_autocast = True
+        else:
+            dtype = torch.float32
+            do_autocast = False
+            
+        device_type = "cpu" if self.args.use_cpu else "cuda"
+        
         # Forward pass
-        outputs = model(**inputs)
-        logits = outputs.logits
+        with torch.autocast(device_type=device_type, dtype=dtype, enabled=do_autocast):
+            outputs = model(**inputs)
+            logits = outputs.logits
         
         # Set logit that corresponds to the mask token to -inf
         logits[:, :, self.processing_class.mask_token_id] = torch.finfo(logits.dtype).min # type: ignore
