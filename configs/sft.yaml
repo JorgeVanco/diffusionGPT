@@ -62,5 +62,5 @@ run_name: "diffusion-baseline-sft-nanogpt"
 auto_naming: false
 
 # Misc
-remove_unused_columns: true
+remove_unused_columns: false
 seed: 42

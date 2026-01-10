@@ -48,7 +48,7 @@ class DiffusionTrainer(Trainer):
         # Apply Loss Weighting (MDLM formulation)
         # Assume linear schedule for example: w(t) = 1/t
         # Real implementations use the exact derivative of the schedule
-        weights = 1.0 / (t + 1e-6)  # Avoid division by 
+        weights = (1.0 / (t + 1e-6)).view(-1, 1)  # Avoid division by zero
         
         time_weight_mask = inputs.pop("time_weight_mask", None)
         if time_weight_mask is not None:
@@ -56,7 +56,7 @@ class DiffusionTrainer(Trainer):
         
         # Mask out the ignored tokens from the average
         mask = (labels != -100).float()
-        weighted_loss = (per_token_loss * mask * weights.unsqueeze(-1)).sum() / (mask.sum() + 1e-6)
+        weighted_loss = (per_token_loss * mask * weights).sum() / (mask.sum() + 1e-6)
         
         return (weighted_loss, outputs) if return_outputs else weighted_loss
     
@@ -67,8 +67,9 @@ class DiffusionTrainer(Trainer):
     
     
 class DiscreteDiffusionCollator:
-    def __init__(self, tokenizer, corruption_prob=0.1) -> None:
+    def __init__(self, tokenizer, max_seq_length = None, corruption_prob=0.1) -> None:
         self.tokenizer = tokenizer
+        self.max_seq_length = max_seq_length
         self.corruption_prob = corruption_prob
         self.seed = 42
         self.generator = torch.Generator().manual_seed(self.seed)
@@ -76,6 +77,27 @@ class DiscreteDiffusionCollator:
         self.edit_stage_active = False
 
     def __call__(self, batch) -> dict[str, torch.Tensor]:
+        
+        if self.max_seq_length is not None:
+            # Truncate sequences longer than max_seq_length
+            for item in batch:
+                item['input_ids'] = item['input_ids'][-self.max_seq_length:]
+                item['attention_mask'] = item['attention_mask'][-self.max_seq_length:]
+                if "assistant_masks" in item:
+                    item['assistant_masks'] = item['assistant_masks'][-self.max_seq_length:]
+        
+        # Get conversation mask if available
+        if "assistant_masks" in batch[0]:
+            assistant_masks_tensors = [torch.tensor(item.pop("assistant_masks")) for item in batch]
+            assistant_masks = torch.nn.utils.rnn.pad_sequence(
+                assistant_masks_tensors,
+                batch_first=True,
+                padding_value=1
+            ).bool() # Pad with 1s (the model should not know when to finish so put ones until the end)
+        else:
+            assistant_masks = None
+            
+        
         batch_inputs = self.tokenizer.pad(
             batch, 
             padding=True, 
@@ -83,7 +105,18 @@ class DiscreteDiffusionCollator:
         )
         
         input_ids = batch_inputs['input_ids']
-        attention_mask = batch_inputs['attention_mask']
+        attention_mask = batch_inputs['attention_mask'].bool()
+        
+        if assistant_masks is not None:
+            if assistant_masks.shape[1] < input_ids.shape[1]:
+                # Pad assistant masks further if input_ids is longer
+                diff = input_ids.shape[1] - assistant_masks.shape[1]
+                assistant_masks = F.pad(assistant_masks, (0, diff), value=0)
+            elif assistant_masks.shape[1] > input_ids.shape[1]:
+                # Truncate if input_ids is shorter
+                assistant_masks = assistant_masks[:, :input_ids.shape[1]]
+                
+            attention_mask = attention_mask & assistant_masks  # Ensure we only attend to assistant tokens if mask provided
         
         # Sample random timesteps for each example
         t = torch.rand((input_ids.size(0),), device=input_ids.device, generator=self.generator)
@@ -94,6 +127,7 @@ class DiscreteDiffusionCollator:
             noisy_inputs, 
             mask_token_id=self.tokenizer.mask_token_id, 
             mask_prob=t, 
+            remasking_mask=assistant_masks,  # Only mask assistant tokens if mask provided
             generator=self.generator
         )
         labels = torch.full_like(input_ids, -100)

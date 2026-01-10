@@ -23,7 +23,7 @@ def mask_input_ids_(input_ids: torch.Tensor, mask_token_id: int, mask_prob: torc
     prob_matrix = torch.rand(input_ids.shape, device=input_ids.device, generator=generator)
     mask_matrix = (prob_matrix < mask_prob.view(-1, 1))
     if remasking_mask is not None:
-        mask_matrix = mask_matrix & remasking_mask
+        mask_matrix = mask_matrix & remasking_mask.bool()
 
     input_ids[mask_matrix] = mask_token_id
     return mask_matrix
