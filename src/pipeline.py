@@ -3,10 +3,10 @@ import torch
 from typing import Any, Generator
 
 class TextDiffusionPipeline(Pipeline):
-    def _sanitize_parameters(self, num_steps: int = 50, allow_edits: bool = True, **kwargs) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
+    def _sanitize_parameters(self, num_steps: int = 50, allow_edits: bool = True, stop_token: None = None, **kwargs) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any]]:
         # Allow user to control the number of steps (e.g., diffusion steps)
         # default to 10 steps
-        forward_kwargs = {"num_steps": num_steps, "allow_edits": allow_edits}
+        forward_kwargs = {"num_steps": num_steps, "allow_edits": allow_edits, "stop_token": stop_token}
         
         preprocess_kwargs = {}
         if "max_length" in kwargs:
@@ -119,7 +119,7 @@ class TextDiffusionPipeline(Pipeline):
         return {"final_state": final_state, "history": all_states}
     
     @torch.no_grad()
-    def stream_generation(self, input_text, num_steps=50, allow_edits=True, max_length=None) -> Generator[str, None, None]:
+    def stream_generation(self, input_text, num_steps=50, allow_edits=True, max_length=None, stop_token=None) -> Generator[str, None, None]:
         """
         Public method to stream text generation step-by-step.
         """
@@ -131,6 +131,10 @@ class TextDiffusionPipeline(Pipeline):
         for step_tensor in self.diffusion_generator(input_ids, num_steps, allow_edits=allow_edits):
             # Decode current state
             text = self.tokenizer.decode(step_tensor[0], skip_special_tokens=False) # type: ignore
+            yield text
+            
+        if stop_token is not None and stop_token in text[len(input_text):]:
+            text = input_text + text[len(input_text):].split(stop_token)[0]
             yield text
         
     def postprocess(self, model_outputs) -> list[str] | Any:
@@ -151,7 +155,8 @@ class TextDiffusionPipeline(Pipeline):
         block_size: int,
         max_length: int,
         num_steps: int,
-        allow_edits: bool = True
+        allow_edits: bool = True,
+        stop_token: None = None
     ) -> Generator[torch.Tensor, None, None]:
         """
         Generator that yields the diffusion states block-by-block.
@@ -161,6 +166,7 @@ class TextDiffusionPipeline(Pipeline):
             max_length (int): Max length of the generated text.
             num_steps (int): Number of diffusion steps per block.
             allow_edits (bool): Whether to allow edits to existing tokens.
+            stop_token (str | None): Token at which to stop generation early.
         Yields:
             torch.Tensor: The current state of the full sequence after each diffusion step.
         """
@@ -169,6 +175,7 @@ class TextDiffusionPipeline(Pipeline):
             raise ValueError("Tokenizer was not passed to the pipeline!")
         
         max_seq_length = self.model.config.seq_length if hasattr(self.model.config, "seq_length") else 512
+        stop_token_id = self.tokenizer.convert_tokens_to_ids(stop_token) if stop_token is not None else None
         
         assert block_size > 0 and block_size <= max_seq_length, f"block_size must be in (0, {max_seq_length}]"
         
@@ -199,10 +206,10 @@ class TextDiffusionPipeline(Pipeline):
                 yield torch.cat([full_sequence, current_generated_tokens], dim=1)
                 
             
-            if self.tokenizer.eos_token_id in current_generated_tokens:
+            if stop_token_id is not None and stop_token_id in current_generated_tokens:
                 # Stop if EOS is generated
-                eos_index = (current_generated_tokens == self.tokenizer.eos_token_id).nonzero(as_tuple=True)[1] # type: ignore
-                current_generated_tokens = current_generated_tokens[:, :eos_index[0]+1]
+                eos_index = (current_generated_tokens == stop_token_id).nonzero(as_tuple=True)[1] # type: ignore
+                current_generated_tokens = current_generated_tokens[:, :eos_index[0]]
                 yield torch.cat([full_sequence, current_generated_tokens], dim=1)
                 break
 
@@ -252,7 +259,8 @@ class TextDiffusionPipeline(Pipeline):
         block_size: int = 64, 
         max_length: int = 256, 
         num_steps: int = 50,
-        allow_edits: bool = True
+        allow_edits: bool = True,
+        stop_token: None = None
     ) -> Generator[str, None, None]:
         """
         Streams the generation process block-by-block.
@@ -263,6 +271,7 @@ class TextDiffusionPipeline(Pipeline):
             max_length (int): Max length of the generated text.
             num_steps (int): Number of diffusion steps per block.
             allow_edits (bool): Whether to allow edits to existing tokens.
+            stop_token (None): Token at which to stop generation early.
         Yields:
             str: The current generated text after each diffusion step.
         """
@@ -270,6 +279,6 @@ class TextDiffusionPipeline(Pipeline):
         
         input_ids = self.tokenizer.encode(input_text, return_tensors="pt").to(self.model.device) # type: ignore
         
-        for step_tensor in self.block_diffusion_generator(input_ids, block_size, max_length, num_steps, allow_edits):
+        for step_tensor in self.block_diffusion_generator(input_ids, block_size, max_length, num_steps, allow_edits, stop_token):
             # Decode current state
             yield self.tokenizer.decode(step_tensor[0], skip_special_tokens=False) # type: ignore
