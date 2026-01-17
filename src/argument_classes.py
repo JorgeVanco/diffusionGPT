@@ -28,6 +28,10 @@ class DiffusionTrainingArguments(TrainingArguments):
         default=None,
         metadata={"help": "If set, adjusts the number of training samples to achieve the target parameter-to-data ratio."}
     )
+    time_loss_weighting: bool = field(
+        default=True,
+        metadata={"help": "If true, applies time-dependent weighting to the loss."}
+    )
 
     
 @dataclass

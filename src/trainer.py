@@ -47,8 +47,10 @@ class DiffusionTrainer(Trainer):
         
         # Apply Loss Weighting (MDLM formulation)
         # Assume linear schedule for example: w(t) = 1/t
-        # Real implementations use the exact derivative of the schedule
-        weights = (1.0 / (t + 1e-6)).view(-1, 1)  # Avoid division by zero
+        if self.args.time_loss_weighting: # type: ignore
+            weights = (1.0 / (t + 1e-10)).view(-1, 1)  # Avoid division by zero
+        else:
+            weights = 1.0
         
         time_weight_mask = inputs.pop("time_weight_mask", None)
         if time_weight_mask is not None:
@@ -56,7 +58,7 @@ class DiffusionTrainer(Trainer):
         
         # Mask out the ignored tokens from the average
         mask = (labels != -100).float()
-        weighted_loss = (per_token_loss * mask * weights).sum() / (mask.sum() + 1e-6)
+        weighted_loss = (per_token_loss * mask * weights).sum() / (mask.sum() + 1e-10)
         
         return (weighted_loss, outputs) if return_outputs else weighted_loss
     
