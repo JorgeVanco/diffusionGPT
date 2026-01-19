@@ -1,9 +1,9 @@
 import os
-from datasets import load_dataset, load_from_disk
-from transformers import AutoTokenizer, PreTrainedTokenizer
-from itertools import chain
-from src.utils  import get_args
-from src.data_utils import load_tokenizer, tokenize_and_pack
+import argparse
+from datasets import concatenate_datasets, Dataset
+from src.utils import get_args
+from src.data_utils import load_tokenizer
+from tasks import TASK_REGISTRY
 
 def setup_chat_format(tokenizer):
     if not tokenizer.chat_template:
@@ -26,13 +26,13 @@ def setup_chat_format(tokenizer):
             "{% endif %}"
         )
         
-        # Add special tokens to the vocabulary!
+        # Add special tokens to the vocabulary
         special_tokens = ["<|im_start|>", "<|im_end|>"]
         tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
         
     return tokenizer
 
-def process_smoltalk(examples, tokenizer):
+def process_batch(examples, tokenizer):
     processed_examples = {
         "input_ids": [],
         "attention_mask": [],
@@ -58,22 +58,49 @@ def process_smoltalk(examples, tokenizer):
     return processed_examples
 
 if __name__ == "__main__":
+    task_names = "everyday,smoltalk,nemotron"
+    
     model_args, data_args, training_args = get_args()
     
     tokenizer = load_tokenizer(model_args)
-    
-    dataset = load_dataset("HuggingFaceTB/smol-smoltalk")
-    
     tokenizer = setup_chat_format(tokenizer)
     
-    dataset = dataset.map(
-        lambda x: process_smoltalk(x, tokenizer),
+    # 1. Load and Mix Datasets
+    task_names = task_names.split(",")
+    raw_datasets = []
+    
+    print(f"Loading tasks: {task_names}")
+    for name in task_names:
+        name = name.strip()
+        if name in TASK_REGISTRY:
+            task = TASK_REGISTRY[name](seed=training_args.seed)
+            ds = task.load_dataset()
+            
+            # Ensure only necessary columns are kept to avoid concatenation errors
+            ds = ds.select_columns(["messages"])
+            raw_datasets.append(ds)
+            print(f"Loaded {name}: {len(ds)} samples")
+        else:
+            print(f"Warning: Task '{name}' not found in registry.")
+
+    if not raw_datasets:
+        raise ValueError("No valid datasets loaded.")
+
+    # Concatenate all loaded datasets
+    combined_dataset = concatenate_datasets(raw_datasets)
+    
+    # Shuffle mixed dataset
+    combined_dataset = combined_dataset.shuffle(seed=training_args.seed)
+    print(f"Total samples after mixing: {len(combined_dataset)}")
+
+    # 2. Process (Tokenize)
+    processed_dataset = combined_dataset.map(
+        lambda x: process_batch(x, tokenizer),
         batched=True,
-        remove_columns=dataset["train"].column_names,
+        remove_columns=combined_dataset.column_names,
         num_proc=os.cpu_count()
     )
     
-    dataset = dataset.shuffle(seed=training_args.seed)
-    
-    dataset.save_to_disk(data_args.load_from_disk)
+    # 3. Save
+    processed_dataset.save_to_disk(data_args.load_from_disk)
     print(f"Datasets saved to {data_args.load_from_disk}")
