@@ -9,6 +9,7 @@ def load_tokenizer(model_args) -> PreTrainedTokenizer:
     tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name_or_path)
     
     tokenizer.add_special_tokens(model_args.special_tokens)
+    tokenizer.add_tokens(["<|delete|>"])
     assert tokenizer.eos_token is not None, "The tokenizer must have an EOS token defined."
     assert tokenizer.mask_token is not None, "The tokenizer must have a MASK token defined."
     assert tokenizer.pad_token is not None, "The tokenizer must have a PAD token defined."
@@ -110,7 +111,7 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         
         # Process
         with training_args.main_process_first(desc="tokenizing"):
-            tokenized = dataset_dict.map(tokenize_function, batched=True, num_proc=os.cpu_count())
+            tokenized = dataset_dict.map(tokenize_function, batched=True, num_proc=os.cpu_count(), remove_columns=["text"])
         
         with training_args.main_process_first(desc="grouping"):
             lm_datasets = tokenized.map(group_texts, batched=True, batch_size=1000, num_proc=os.cpu_count())

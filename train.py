@@ -96,7 +96,9 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
 
     data_collator = DiscreteDiffusionCollator(
         tokenizer=tokenizer,
-        corruption_prob=training_args.corruption_prob
+        corruption_prob=training_args.corruption_prob,
+        max_seq_length=model_args.max_seq_length,
+        insertion_corruption=training_args.insertion_corruption,
     )
     
     eval_callback = GenerativeEvalCallback(

@@ -1,6 +1,7 @@
 import torch
 import torch.nn.functional as F
 from transformers import Trainer
+import random
 
 from src.utils import mask_input_ids_
 
@@ -69,20 +70,45 @@ class DiffusionTrainer(Trainer):
     
     
 class DiscreteDiffusionCollator:
-    def __init__(self, tokenizer, max_seq_length = None, corruption_prob=0.1) -> None:
+    def __init__(self, tokenizer, max_seq_length = None, corruption_prob=0.1, insertion_corruption=False) -> None:
         self.tokenizer = tokenizer
         self.max_seq_length = max_seq_length
         self.corruption_prob = corruption_prob
+        self.insertion_corruption = insertion_corruption
         self.seed = 42
         self.generator = torch.Generator().manual_seed(self.seed)
         # Add a flag to control the curriculum
         self.edit_stage_active = False
+        
+        if insertion_corruption:
+            if "<|delete|>" not in tokenizer.get_vocab():
+                raise ValueError("Tokenizer must contain a <|delete|> token for insertion corruption.")
+            self.delete_token_id = tokenizer.convert_tokens_to_ids("<|delete|>")
 
     def __call__(self, batch) -> dict[str, torch.Tensor]:
-        
-        if self.max_seq_length is not None:
-            # Truncate sequences longer than max_seq_length
-            for item in batch:
+        insert_corruption_masks_cols = []
+        insert_corruption_masks_rows = []
+        for i, item in enumerate(batch): 
+            insert_idx = None
+            if self.edit_stage_active and (random.random() < self.corruption_prob):
+                insert_idx = random.randint(0, len(item["input_ids"]) - 1)
+                item["input_ids"].insert(insert_idx, self.delete_token_id)
+                item["attention_mask"].insert(insert_idx, 1)
+                if "assistant_masks" in item:
+                    item["assistant_masks"].insert(insert_idx, 1)
+                insert_corruption_masks_cols.append(insert_idx)
+                insert_corruption_masks_rows.append(i)
+            
+            if self.max_seq_length is not None:
+                # Truncate sequences longer than max_seq_length
+                if insert_idx is not None and len(item['input_ids']) >= self.max_seq_length:
+                    # If we truncated and the inserted index is out of bounds, adjust it
+                    if len(item["input_ids"]) - self.max_seq_length < insert_idx:
+                        insert_corruption_masks_cols[-1] = insert_idx - (len(item['input_ids']) - self.max_seq_length)
+                    else:
+                        insert_corruption_masks_cols.pop()
+                        insert_corruption_masks_rows.pop()
+
                 item['input_ids'] = item['input_ids'][-self.max_seq_length:]
                 item['attention_mask'] = item['attention_mask'][-self.max_seq_length:]
                 if "assistant_masks" in item:
@@ -135,6 +161,10 @@ class DiscreteDiffusionCollator:
         labels = torch.full_like(input_ids, -100)
         labels[mask_matrix] = input_ids[mask_matrix]    # Calculate loss on MASKS (Standard MDLM)
         
+        # Insert corruption masks
+        insert_corruption_masks = torch.zeros_like(input_ids).bool()
+        insert_corruption_masks[insert_corruption_masks_rows, insert_corruption_masks_cols] = True
+        
         # Mask for time-weighting application
         # 1.0 = Apply w(t) (Standard Mask Loss)
         # 0.0 = Apply 1.0  (Edit/Reconstruction Loss)
@@ -142,9 +172,9 @@ class DiscreteDiffusionCollator:
         
         if self.edit_stage_active:  # Apply Seed Diffusion Corruption Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
             # Elegible for corruption
-            eligible_for_corruption = (~mask_matrix) & (attention_mask.bool())
+            eligible_for_corruption = ((~mask_matrix) & (attention_mask.bool())) | insert_corruption_masks
             
-            corruption_matrix = torch.rand(input_ids.shape, device=input_ids.device) < self.corruption_prob
+            corruption_matrix = (torch.rand(input_ids.shape, device=input_ids.device) < self.corruption_prob) | insert_corruption_masks
             corruption_mask = eligible_for_corruption & corruption_matrix
             
             # Generate random tokens for the corrupted positions

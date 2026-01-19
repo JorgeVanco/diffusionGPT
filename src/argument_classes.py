@@ -12,6 +12,10 @@ class DiffusionTrainingArguments(TrainingArguments):
         default=0.1,
         metadata={"help": "Probability of replacing a visible token with a random word during training."}
     )
+    insertion_corruption: bool = field(
+        default=False,
+        metadata={"help": "If true, uses insertion-based corruption during training."}
+    )
     auto_naming: bool = field(
         default=False,
         metadata={"help": "If true, the output_dir will be automatically named based on hyperparameters."}
