@@ -1,6 +1,5 @@
 import os
-import argparse
-from datasets import concatenate_datasets, Dataset
+from datasets import concatenate_datasets
 from src.utils import get_args
 from src.data_utils import load_tokenizer
 from tasks import TASK_REGISTRY
@@ -92,14 +91,19 @@ if __name__ == "__main__":
     # Shuffle mixed dataset
     combined_dataset = combined_dataset.shuffle(seed=training_args.seed)
     print(f"Total samples after mixing: {len(combined_dataset)}")
+    
+    # Split into train and test
+    dataset_split = combined_dataset.train_test_split(test_size=1000, seed=training_args.seed)
+    print(f"Split created: {len(dataset_split['train'])} train, {len(dataset_split['test'])} test")
 
     # 2. Process (Tokenize)
-    processed_dataset = combined_dataset.map(
+    processed_dataset = dataset_split.map(
         lambda x: process_batch(x, tokenizer),
         batched=True,
         remove_columns=combined_dataset.column_names,
         num_proc=os.cpu_count()
     )
+    print(f"Processing complete. {processed_dataset}")
     
     # 3. Save
     processed_dataset.save_to_disk(data_args.load_from_disk)
