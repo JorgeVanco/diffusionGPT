@@ -144,7 +144,9 @@ class DiscreteDiffusionCollator:
                 # Truncate if input_ids is shorter
                 assistant_masks = assistant_masks[:, :input_ids.shape[1]]
                 
-            attention_mask = attention_mask & assistant_masks  # Ensure we only attend to assistant tokens if mask provided
+            remasking_mask = attention_mask & assistant_masks
+        else:
+            remasking_mask = attention_mask
         
         # Sample random timesteps for each example
         t = torch.rand((input_ids.size(0),), device=input_ids.device, generator=self.generator)
@@ -155,7 +157,7 @@ class DiscreteDiffusionCollator:
             noisy_inputs, 
             mask_token_id=self.tokenizer.mask_token_id, 
             mask_prob=t, 
-            remasking_mask=assistant_masks,  # Only mask assistant tokens if mask provided
+            remasking_mask=remasking_mask,
             generator=self.generator
         )
         labels = torch.full_like(input_ids, -100)
@@ -172,7 +174,7 @@ class DiscreteDiffusionCollator:
         
         if self.edit_stage_active:  # Apply Seed Diffusion Corruption Logic (Section 3.1 in https://arxiv.org/pdf/2508.02193)
             # Elegible for corruption
-            eligible_for_corruption = ((~mask_matrix) & (attention_mask.bool())) | insert_corruption_masks
+            eligible_for_corruption = ((~mask_matrix) & (remasking_mask.bool())) | insert_corruption_masks
             
             corruption_matrix = (torch.rand(input_ids.shape, device=input_ids.device) < self.corruption_prob) | insert_corruption_masks
             corruption_mask = eligible_for_corruption & corruption_matrix
