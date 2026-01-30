@@ -12,5 +12,19 @@ class NemotronTask(Task):
         # Concatenate if you want both
         # dataset = concatenate_datasets([ds_chat, ds_struct])
         dataset = ds_chat
+        
+        # Function to standardise messages: keep ONLY 'role' and 'content'
+        def format_messages(example):
+            clean_messages = []
+            for msg in example["messages"]:
+                clean_messages.append({
+                    "role": msg["role"],
+                    "content": msg["content"]
+                    # Drop 'reasoning_content'
+                })
+            return {"messages": clean_messages}
+
+        # Apply the formatting
+        dataset = dataset.map(format_messages, desc="Standardizing Nemotron schema")
             
         return dataset
