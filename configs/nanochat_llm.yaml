@@ -20,37 +20,45 @@ streaming: true
 # --- Diffusion Arguments ---
 num_diffusion_steps: 100
 corruption_prob: 0.1
-edit_stage_start: 0.8
-anneal_corruption: true
+edit_stage_start: 0.0
+anneal_corruption: false
+insertion_corruption: true
 
 # --- Training Arguments (Hugging Face Trainer) ---
 output_dir: "./output/" # base path (will be ./output/{run_name})
 overwrite_output_dir: true
 do_train: true
 do_eval: true
+# resume_from_checkpoint: "./output/pretrain-18_01/checkpoint-2000"
 
 # Optimization
 bf16: true
-learning_rate: 2.0e-4
+tf32: true
+learning_rate: 4.0e-4
 weight_decay: 0.01
-target_param_data_ratio: 20
+target_param_data_ratio: 40
 # max_steps: 5000 # 20 * 590,363,220 [tokens] /  (8 * 32 * 2048) [tokens / step] ~ 22.520 [steps]
 per_device_train_batch_size: 8
 gradient_accumulation_steps: 32 # 8 * 32 * 2048 ~ 0.5M tokens per step (matches nanochat total_batch_size)
 num_train_epochs: 1
 torch_compile: true
+optim: "adamw_torch_fused"
+
+# Data Loading
+dataloader_num_workers: 32
+dataloader_pin_memory: true
 
 # Scheduler
 lr_scheduler_type: "warmup_stable_decay"
-warmup_steps: 500
+warmup_steps: 25
 lr_scheduler_kwargs:
-  num_decay_steps: 2500  # Nested dictionary syntax
+  num_decay_steps: 250  # Nested dictionary syntax
 
 # Evaluation & Saving
 eval_strategy: "steps"
-eval_steps: 5000
+eval_steps: 250
 save_strategy: "steps"
-save_steps: 5000
+save_steps: 500
 load_best_model_at_end: true
 
 # Logging
@@ -58,8 +66,8 @@ logging_strategy: "steps"
 include_num_input_tokens_seen: "non_padding"
 logging_steps: 100
 report_to: "wandb"
-run_name: "diffusion-baseline-nanogpt"
-auto_naming: true
+run_name: "pretrain" #"diffusion-baseline-nanogpt"
+auto_naming: false
 
 # Misc
 remove_unused_columns: true

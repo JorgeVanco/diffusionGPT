@@ -16,23 +16,10 @@ class DiffusionTrainer(Trainer):
         labels = inputs.pop("labels")
         t = inputs.pop("t") # Timestep passed from collator
         
-        if self.args.bf16:
-            dtype = torch.bfloat16
-            do_autocast = True
-        elif self.args.fp16:
-            dtype = torch.float16
-            do_autocast = True
-        else:
-            dtype = torch.float32
-            do_autocast = False
-            
-        device_type = "cpu" if self.args.use_cpu else "cuda"
-        
         # Forward pass
-        with torch.autocast(device_type=device_type, dtype=dtype, enabled=do_autocast):
-            outputs = model(**inputs)
-            logits = outputs.logits
-        
+        outputs = model(**inputs)
+        logits = outputs.logits
+    
         # Set logit that corresponds to the mask token to -inf
         logits[:, :, self.processing_class.mask_token_id] = torch.finfo(logits.dtype).min # type: ignore
         
@@ -90,7 +77,7 @@ class DiscreteDiffusionCollator:
         insert_corruption_masks_rows = []
         for i, item in enumerate(batch): 
             insert_idx = None
-            if self.edit_stage_active and (random.random() < self.corruption_prob):
+            if self.edit_stage_active and self.insertion_corruption and (random.random() < self.corruption_prob):
                 insert_idx = random.randint(0, len(item["input_ids"]) - 1)
                 item["input_ids"].insert(insert_idx, self.delete_token_id)
                 item["attention_mask"].insert(insert_idx, 1)
@@ -120,8 +107,10 @@ class DiscreteDiffusionCollator:
             assistant_masks = torch.nn.utils.rnn.pad_sequence(
                 assistant_masks_tensors,
                 batch_first=True,
-                padding_value=1
-            ).bool() # Pad with 1s (the model should not know when to finish so put ones until the end)
+                padding_value=0
+            ).bool() 
+            # Pad with 0s (the model should not remask these positions, it learns well but always puts <im_end|> at the end)
+            # Pad with 1s (the model should not know when to finish so put ones until the end)
         else:
             assistant_masks = None
             

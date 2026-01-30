@@ -1,5 +1,5 @@
 # --- Model Arguments ---
-model_name_or_path: "./output/layers20_embd1280_seq2048_diff100_lr0.0002_0105_2318"
+model_name_or_path: "./output/pretrain"
 tokenizer_name_or_path: "gpt2"
 # Nanochat Logic: 
 # depth = 20
@@ -11,7 +11,7 @@ num_hidden_layers: 20
 num_attention_heads: 10
 
 # --- Data Arguments ---
-load_from_disk: "~/workdata/smoltalk"
+load_from_disk: "~/workdata/sft-dataset" # "~/workdata/sft-dataset"
 dataset_name: "HuggingFaceTB/smoltalk"
 # max_train_samples: 5000
 # dataset_subset_name: sample-100BT
@@ -28,6 +28,7 @@ output_dir: "./output/" # base path (will be ./output/{run_name})
 overwrite_output_dir: true
 do_train: true
 do_eval: true
+resume_from_checkpoint: "./output/diffusion-baseline-sft-newdata-assistantmasks/checkpoint-31000"
 
 # Optimization
 bf16: true
@@ -37,7 +38,7 @@ weight_decay: 0.01
 # max_steps: 5000 # 20 * 590,363,220 [tokens] /  (8 * 32 * 2048) [tokens / step] ~ 22.520 [steps]
 per_device_train_batch_size: 4
 gradient_accumulation_steps: 4 #32 # 8 * 32 * 2048 ~ 0.5M tokens per step (matches nanochat total_batch_size)
-num_train_epochs: 1
+num_train_epochs: 2
 torch_compile: true
 
 # Scheduler
@@ -58,7 +59,7 @@ logging_strategy: "steps"
 include_num_input_tokens_seen: "non_padding"
 logging_steps: 100
 report_to: "wandb"
-run_name: "diffusion-baseline-sft-nanogpt"
+run_name: "diffusion-baseline-sft"
 auto_naming: false
 
 # Misc
