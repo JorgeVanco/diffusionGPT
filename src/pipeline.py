@@ -155,7 +155,8 @@ class TextDiffusionPipeline(Pipeline):
         model_inputs,
         num_steps: int = 50,
         allow_edits: bool = True,
-        use_confidence: bool = False
+        use_confidence: bool = False,
+        stop_token: str | None = None
     ) -> dict[str, Any]:
         if self.tokenizer is None:
             raise ValueError("Tokenizer was not passed to the pipeline!")
