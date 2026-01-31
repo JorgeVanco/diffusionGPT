@@ -24,7 +24,7 @@ This approach enables:
 
 ### See It In Action
 
-> *[Video demonstration will be embedded here]*
+https://github.com/user-attachments/assets/84ce6d3f-603f-4940-8034-3b961c9778e7
 
 Watch as diffusionGPT iteratively refines masked tokens into coherent text through a beautiful denoising process.
 
