@@ -6,7 +6,7 @@ user_env = []
 session_timeout = 3600
 
 # Duration (in seconds) of the user session expiry
-user_session_timeout = 1296000  # 15 days
+user_session_timeout = 1296000 # 15 days
 
 # Enable third parties caching (e.g., LangChain cache)
 cache = false
@@ -53,42 +53,42 @@ reaction_on_message_received = false
 
 # Authorize users to spontaneously upload files with messages
 [features.spontaneous_file_upload]
-    enabled = true
-    # Define accepted file types using MIME types
-    # Examples:
-    # 1. For specific file types:
-    #    accept = ["image/jpeg", "image/png", "application/pdf"]
-    # 2. For all files of certain type:
-    #    accept = ["image/*", "audio/*", "video/*"]
-    # 3. For specific file extensions:
-    #    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
-    # Note: Using "*/*" is not recommended as it may cause browser warnings
-    accept = ["*/*"]
-    max_files = 20
-    max_size_mb = 500
+enabled = true
+# Define accepted file types using MIME types
+# Examples:
+# 1. For specific file types:
+#    accept = ["image/jpeg", "image/png", "application/pdf"]
+# 2. For all files of certain type:
+#    accept = ["image/*", "audio/*", "video/*"]
+# 3. For specific file extensions:
+#    accept = { "application/octet-stream" = [".xyz", ".pdb"] }
+# Note: Using "*/*" is not recommended as it may cause browser warnings
+accept = ["*/*"]
+max_files = 20
+max_size_mb = 500
 
 [features.audio]
-    # Enable audio features
-    enabled = false
-    # Sample rate of the audio
-    sample_rate = 24000
+# Enable audio features
+enabled = false
+# Sample rate of the audio
+sample_rate = 24000
 
 [features.mcp]
-    # Enable Model Context Protocol (MCP) features
-    enabled = false
+# Enable Model Context Protocol (MCP) features
+enabled = false
 
 [features.mcp.sse]
-    enabled = true
+enabled = true
 
 [features.mcp.streamable-http]
-    enabled = true
+enabled = true
 
 [features.mcp.stdio]
-    enabled = true
-    # Only the executables in the allow list can be used for MCP stdio server.
-    # Only need the base name of the executable, e.g. "npx", not "/usr/bin/npx".
-    # Please don't comment this line for now, we need it to parse the executable name.
-    allowed_executables = [ "npx", "uvx" ]
+enabled = true
+# Only the executables in the allow list can be used for MCP stdio server.
+# Only need the base name of the executable, e.g. "npx", not "/usr/bin/npx".
+# Please don't comment this line for now, we need it to parse the executable name.
+allowed_executables = ["npx", "uvx"]
 
 [UI]
 # Name of the assistant.
@@ -141,10 +141,10 @@ custom_meta_url = "https://github.com/JorgeVanco"
 # custom_meta_image_url = "https://chainlit-cloud.s3.eu-west-3.amazonaws.com/logo/chainlit_banner.png"
 
 # Load assistant logo directly from URL.
-logo_file_url = "./public/DiffusionGPT_logo-upscale.png"
+logo_file_url = "./public/DiffusionGPT_logo.png"
 
 # Load assistant avatar image directly from URL.
-default_avatar_file_url = "./public/DiffusionGPT_icon.png"
+default_avatar_file_url = "./public/favicon.png"
 
 # Specify a custom build directory for the frontend.
 # This can be used to customize the frontend code.
@@ -153,11 +153,11 @@ default_avatar_file_url = "./public/DiffusionGPT_icon.png"
 
 # Specify optional one or more custom links in the header.
 [[UI.header_links]]
-    name = "GitHub"
-    display_name = "GitHub Repo"
-    icon_url = "./public/DiffusionGPT_icon.png"
-    url = "https://github.com/JorgeVanco"
-    target = "_blank" # (default)  # Optional: "_self", "_parent", "_top".
+name = "GitHub"
+display_name = "GitHub Repo"
+icon_url = "./public/favicon.png"
+url = "https://github.com/JorgeVanco/diffusionGPT"
+target = "_blank"                                  # (default)  # Optional: "_self", "_parent", "_top".
 
 [meta]
 generated_by = "2.9.5"
