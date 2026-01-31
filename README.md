@@ -17,6 +17,7 @@
 **diffusionGPT** is a novel language model that generates text through iterative refinement rather than sequential prediction. Unlike traditional autoregressive models (GPT, Llama) that generate text left-to-right one token at a time, diffusionGPT uses a **discrete diffusion process** to simultaneously denoise and refine entire sequences.
 
 This approach enables:
+
 - **Parallel token generation** across the sequence
 - **Creative text editing** and refinement capabilities
 - **Flexible generation modes** (standard and semi-autoregressive)
@@ -33,9 +34,11 @@ Watch as diffusionGPT iteratively refines masked tokens into coherent text throu
 ## Features
 
 ### Parallel Decoding
+
 Unlike autoregressive models that must generate tokens sequentially, diffusionGPT generates and refines multiple tokens simultaneously, allowing for more flexible and potentially faster generation strategies.
 
 ### Seed Diffusion Editing
+
 Implements advanced editing logic from [Seed Diffusion (arXiv:2508.02193)](https://arxiv.org/abs/2508.02193), enabling the model to refine and improve existing text while maintaining semantic coherence.
 
 ### Flexible Generation Modes
@@ -45,14 +48,15 @@ Implements advanced editing logic from [Seed Diffusion (arXiv:2508.02193)](https
 3. **Streaming**: Real-time visualization of the denoising process
 
 ### Custom Pipeline Architecture
+
 Built-in `TextDiffusionPipeline` with sophisticated features:
+
 - Ancestral sampling with configurable noise schedules
 - Confidence-based token unmasking
 - Stop token detection
 - Block-wise generation support
 
 ---
-
 
 ## Quick Start
 
@@ -87,8 +91,8 @@ messages = [
     {"role": "user", "content": "Explain quantum computing in simple terms."}
 ]
 prompt = pipe.tokenizer.apply_chat_template(
-    messages, 
-    tokenize=False, 
+    messages,
+    tokenize=False,
     add_generation_prompt=True
 )
 
@@ -131,6 +135,7 @@ uv run chainlit run app.py
 ```
 
 This provides a user-friendly web interface with:
+
 - Real-time generation visualization
 - Adjustable diffusion parameters
 - Support for both generation modes
@@ -174,6 +179,7 @@ This two-stage approach significantly improves generation quality and enables th
 ### Training from Scratch
 
 The repository includes complete training scripts with support for:
+
 - Multi-GPU distributed training
 - Streaming datasets (FineWeb, etc.)
 - WandB integration
@@ -224,14 +230,14 @@ optuna-dashboard sqlite:///db.sqlite3
 
 Key hyperparameters (see `configs/` for full details):
 
-| Parameter | Default | Description |
-|-----------|---------|-------------|
-| `num_diffusion_steps` | 100 | Steps during training diffusion |
-| `corruption_prob` | 0.1 | Token corruption probability |
-| `edit_stage_start` | 0.8 | When to begin Seed Diffusion editing |
-| `anneal_corruption` | True | Gradually increase corruption in stage 2 |
-| `insertion_corruption` | True | Use insertion-based corruption |
-| `time_loss_weighting` | True | Apply MDLM time weighting |
+| Parameter              | Default | Description                              |
+| ---------------------- | ------- | ---------------------------------------- |
+| `num_diffusion_steps`  | 100     | Steps during training diffusion          |
+| `corruption_prob`      | 0.1     | Token corruption probability             |
+| `edit_stage_start`     | 0.8     | When to begin Seed Diffusion editing     |
+| `anneal_corruption`    | True    | Gradually increase corruption in stage 2 |
+| `insertion_corruption` | True    | Use insertion-based corruption           |
+| `time_loss_weighting`  | True    | Apply MDLM time weighting                |
 
 ---
 
@@ -240,6 +246,7 @@ Key hyperparameters (see `configs/` for full details):
 ### Generation Quality
 
 The model has been trained on a mixture of:
+
 - **Pre-training**: FineWeb-100BT (not trained with the whole dataset)
 - **Fine-tuning**: SmolTalk, Everyday Conversations, Nemotron datasets
 
@@ -259,13 +266,13 @@ result = pipe(
 )
 ```
 
-| Parameter | Type | Default | Description |
-|-----------|------|---------|-------------|
-| `num_steps` | int | 50 | Number of denoising iterations |
-| `allow_edits` | bool | True | Enable iterative refinement of visible tokens |
-| `use_confidence` | bool | False | Unmask highest-confidence tokens first |
-| `block_size` | int | 128 | Tokens per block (semi-autoregressive mode) |
-| `max_length` | int | 2048 | Maximum sequence length to generate |
+| Parameter        | Type | Default | Description                                   |
+| ---------------- | ---- | ------- | --------------------------------------------- |
+| `num_steps`      | int  | 50      | Number of denoising iterations                |
+| `allow_edits`    | bool | True    | Enable iterative refinement of visible tokens |
+| `use_confidence` | bool | False   | Unmask highest-confidence tokens first        |
+| `block_size`     | int  | 128     | Tokens per block (semi-autoregressive mode)   |
+| `max_length`     | int  | 2048    | Maximum sequence length to generate           |
 
 ---
 
@@ -302,15 +309,15 @@ diffusionGPT/
 The model learns to reverse a corruption process:
 
 1. **Training Time**:
-   - Sample timestep `t ~ Uniform(0, 1)`
-   - Mask proportion `t` of tokens → `input_ids_noisy`
-   - Train model to predict original tokens from `input_ids_noisy`
+    - Sample timestep `t ~ Uniform(0, 1)`
+    - Mask proportion `t` of tokens → `input_ids_noisy`
+    - Train model to predict original tokens from `input_ids_noisy`
 
 2. **Inference Time**:
-   - Start with fully masked sequence
-   - Iteratively unmask tokens based on model predictions
-   - Apply Seed Diffusion editing to refine visible tokens
-   - Continue until all tokens are revealed
+    - Start with fully masked sequence
+    - Iteratively unmask tokens based on model predictions
+    - Apply Seed Diffusion editing to refine visible tokens
+    - Continue until all tokens are revealed
 
 ### Key Components
 
@@ -332,12 +339,10 @@ The model learns to reverse a corruption process:
 
 ## Roadmap
 
-- [ ] Multi-lingual support
-- [ ] Improved long-form generation strategies
+- [ ] Figure out how to sft with block generation. Currently it always generates `<im_end>` as the final token and cannot do block generation.
 - [ ] Quantization and optimization for edge devices
 - [ ] Add tool use
 - [ ] Add thinking capability
-- [ ] Fine-tuning on domain-specific datasets
 - [ ] Advanced editing and infilling capabilities
 
 ---
