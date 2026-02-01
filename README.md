@@ -25,9 +25,14 @@ This approach enables:
 
 ### See It In Action
 
-https://github.com/user-attachments/assets/84ce6d3f-603f-4940-8034-3b961c9778e7
+Watch as diffusionGPT iteratively refines masked tokens into coherent text through the denoising process.
 
-Watch as diffusionGPT iteratively refines masked tokens into coherent text through a beautiful denoising process.
+https://github.com/user-attachments/assets/6d2a8dfc-835e-4136-8a4c-379137d64f66
+
+The following video shows the semi-autoregressive generation of a small model trained on TinyStories. 
+
+https://github.com/user-attachments/assets/51cd28be-8111-4c1d-9a89-faeaa22e97bf
+
 
 ---
 
@@ -330,6 +335,7 @@ The model learns to reverse a corruption process:
 
 ## ⚠️ Limitations
 
+- **Semi-autoregressive generation**: Currently the chatbot cannot do semi-autoregressive generation because it always outputs `<im_end>` as the final token because of how I did the sft. I have to figure out how to only train on the assistant answers enabling the model to perform semi-autoregressive generation. (Training on the whole conversation works but the assistant was not that good, though I did not train that much because I thought using only the assistant part was better and later realized the issue).
 - **Factuality**: Like all LLMs, can produce hallucinations. Not optimized for factual retrieval.
 - **Long-range Coherence**: Most effective for short-to-medium conversations. Long-form coherence is an active development area.
 - **Speed vs Quality Trade-off**: Fewer diffusion steps = faster but lower quality. Tuning required for your use case.
