@@ -187,7 +187,7 @@ This two-stage approach significantly improves generation quality and enables th
 
 ## The Creation Process
 
-Building diffusionGPT involved translating theoretical concepts from discrete diffusion papers into a practical, HuggingFace-compatible ecosystem. The development process followed four distinct stages:
+Building diffusionGPT involved translating theoretical concepts from discrete diffusion papers into a practical, Hugging Face-compatible ecosystem. The development process followed four distinct stages:
 
 ### 1. Architecture Selection
 
