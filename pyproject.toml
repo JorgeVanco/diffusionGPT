@@ -19,13 +19,3 @@ dependencies = [
     "transformers[torch]>=4.56.2",
     "wandb>=0.18.0",
 ]
-[tool.uv.extra-build-dependencies]
-flash-attn = ["torch", "packaging", "ninja"]
-
-[build-system]
-requires = ["setuptools>=61.0"]
-build-backend = "setuptools.build_meta"
-
-[tool.setuptools.packages.find]
-where = ["."]
-include = ["src*"]
