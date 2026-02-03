@@ -5,6 +5,7 @@
 
 [![License: MIT](https://img.shields.io/badge/License-MIT-yellow.svg)](https://opensource.org/licenses/MIT)
 [![Hugging Face Model](https://img.shields.io/badge/🤗-Model-blue)](https://huggingface.co/JorgeVanco/diffusionGPT)
+[![Blog](https://img.shields.io/badge/Blog-Read_the_Story-1f883d)](https://jorgevanco.github.io/blogs/building-diffusiongpt.html)
 
 [**Quick Start**](#quick-start) • [**Documentation**](#features) • [**Research**](#research-background) • [**Training**](#training)
 
@@ -186,7 +187,7 @@ This two-stage approach significantly improves generation quality and enables th
 ---
 
 ## The Creation Process
-
+You can also read the process in the [blog post](https://jorgevanco.github.io/blogs/building-diffusiongpt.html). 
 Building diffusionGPT involved translating theoretical concepts from discrete diffusion papers into a practical, Hugging Face-compatible ecosystem. The development process followed four distinct stages:
 
 ### 1. Architecture Selection
