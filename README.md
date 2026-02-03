@@ -12,6 +12,8 @@
 
 </div>
 
+https://github.com/user-attachments/assets/84ce6d3f-603f-4940-8034-3b961c9778e7
+
 ## Overview
 
 **diffusionGPT** is a novel language model that generates text through iterative refinement rather than sequential prediction. Unlike traditional autoregressive models (GPT, Llama) that generate text left-to-right one token at a time, diffusionGPT uses a **discrete diffusion process** to simultaneously denoise and refine entire sequences.
@@ -25,14 +27,9 @@ This approach enables:
 
 ### See It In Action
 
-Watch as diffusionGPT iteratively refines masked tokens into coherent text through the denoising process.
-
-https://github.com/user-attachments/assets/6d2a8dfc-835e-4136-8a4c-379137d64f66
-
-The following video shows the semi-autoregressive generation of a small model trained on TinyStories. 
+The following video shows the semi-autoregressive generation of a small model trained on TinyStories.
 
 https://github.com/user-attachments/assets/51cd28be-8111-4c1d-9a89-faeaa22e97bf
-
 
 ---
 
@@ -44,7 +41,7 @@ Unlike autoregressive models that must generate tokens sequentially, diffusionGP
 
 ### Seed Diffusion Editing
 
-Implements advanced editing logic from [Seed Diffusion (arXiv:2508.02193)](https://arxiv.org/abs/2508.02193), enabling the model to refine and improve existing text while maintaining semantic coherence.
+Implements editing logic from [Seed Diffusion](https://arxiv.org/abs/2508.02193), enabling the model to refine and improve existing text while maintaining semantic coherence.
 
 ### Flexible Generation Modes
 
@@ -54,7 +51,7 @@ Implements advanced editing logic from [Seed Diffusion (arXiv:2508.02193)](https
 
 ### Custom Pipeline Architecture
 
-Built-in `TextDiffusionPipeline` with sophisticated features:
+Built-in `TextDiffusionPipeline` with the following features:
 
 - Ancestral sampling with configurable noise schedules
 - Confidence-based token unmasking
@@ -64,6 +61,8 @@ Built-in `TextDiffusionPipeline` with sophisticated features:
 ---
 
 ## Quick Start
+
+The model can be found at FuggingFace [JorgeVanco/diffusionGPT](https://huggingface.co/JorgeVanco/diffusionGPT).
 
 ### Installation
 
@@ -106,7 +105,7 @@ result = pipe(prompt, num_steps=50)
 print(result["decoded_texts"][0])
 ```
 
-### Advanced: Streaming Generation
+### Streaming Generation
 
 Watch the model refine text in real-time:
 
@@ -116,7 +115,7 @@ for step_text in pipe.stream_generation(prompt, num_steps=32, allow_edits=True):
     print(f"\033[H\033[J{step_text}")  # Clear and update terminal
 ```
 
-### Advanced: Semi-Autoregressive Generation
+### Semi-Autoregressive Generation
 
 For generating longer sequences beyond the model's context window:
 
@@ -160,6 +159,21 @@ The core training methodology is based on [MDLM](https://s-sahoo.com/mdlm/), whi
 2. **Reverse Process**: Train the model to predict the original tokens from the corrupted input
 3. **Time Weighting**: Apply time-dependent loss weighting for stable training
 
+#### The Diffusion Algorithm
+
+The model learns to reverse a corruption process:
+
+1. **Training Time**:
+    - Sample timestep `t ~ Uniform(0, 1)`
+    - Mask proportion `t` of tokens → `input_ids_noisy`
+    - Train model to predict original tokens from `input_ids_noisy`
+
+2. **Inference Time**:
+    - Start with fully masked sequence
+    - Iteratively unmask tokens based on model predictions
+    - Apply Seed Diffusion editing to refine visible tokens
+    - Continue until all tokens are revealed
+
 ### Seed Diffusion Editing
 
 We implement the robust training curriculum from [Seed Diffusion](https://arxiv.org/abs/2508.02193):
@@ -169,15 +183,62 @@ We implement the robust training curriculum from [Seed Diffusion](https://arxiv.
 
 This two-stage approach significantly improves generation quality and enables the model to perform coherent text editing.
 
-### Architecture Details
-
-- **Backbone**: ModernBERT-based transformer encoder
-- **Model Size**: ~600M parameters
-- **Context Length**: 2048 tokens
-- **Vocabulary**: GPT-2 tokenizer with custom chat tokens
-- **Special Tokens**: `<|im_start|>`, `<|im_end|>`, `<mask>`, `<|delete|>` (for insertion corruption)
-
 ---
+
+## The Creation Process
+
+Building diffusionGPT involved translating theoretical concepts from discrete diffusion papers into a practical, HuggingFace-compatible ecosystem. The development process followed four distinct stages:
+
+### 1. Architecture Selection
+
+Instead of using a standard decoder-only model (like Llama or GPT), this project utilizes **ModernBERT** (Answer.AI) as the backbone.
+
+- **Reasoning**: Diffusion models require bidirectional attention to "see" the entire sequence context while refining masked tokens. Encoder-only architectures are naturally suited for this.
+- **Implementation**: The configuration is adapted in [`src/argument_classes.py`](src/argument_classes.py) to support `ModernBERT-base` (~600M params) with a custom vocabulary size.
+- **Specs**:
+    - **Context Length**: 2048 tokens
+    - **Vocabulary**: GPT-2 tokenizer
+    - **Special Tokens**: `<|im_start|>`, `<|im_end|>`, `<mask>`, `<|delete|>` (for insertion corruption)
+
+### 2. Custom Training Logic
+
+Standard causal language modeling (CLM) trainers cannot handle diffusion. I implemented a custom training loop centered around:
+
+- **The Collator**: A [`DiscreteDiffusionCollator`](src/trainer.py) was built to handle dynamic masking logic ($t \sim U(0,1)$) and label creation on the fly. This data collator masks the inputs, applies the edit corruption if necessary and also applies any additional masks for _sft_.
+- **The Trainer**: The [`DiffusionTrainer`](src/trainer.py) overrides the loss computation to apply time-dependent weighting, ensuring the model focuses on getting right the last stages of denoising.
+
+> **Note:** I wanted to use the Huggingface ecosystem instead of doing everything from scratch to learn how to use the existing libraries.
+
+### 3. Implementing Seed Diffusion (Curriculum Learning)
+
+To support editing and higher consistency, I implemented the "Seed Diffusion" two-stage training strategy via custom callbacks:
+
+- **Stage 1 (MDLM)**: Pure masking and reconstruction.
+- **Stage 2 (Interpolation)**: Facilitated by the [`SeedDiffusionCurriculumCallback`](src/trainer_callbacks.py), which continuously monitors training steps. Once the `edit_stage_start` threshold (default 80%) is reached, it introduces "gold" token corruption, teaching the model to refine existing incorrect tokens rather than just filling blanks. It also introduces the `<|delete|>` token, enabling the model to learn token removal (note: delete corruption is not yet implemented for _sft_).
+
+> **Note:** In my experiments I found that having the edit stage active for the whole length of the training yielded better results. I believe this is due to making better use of the limited number of tokens, as this stage uses all the tokens for the loss calculation instead of just the handful of masked tokens.
+
+### 4. The Inference Engine
+
+For model inference [`TextDiffusionPipeline`](src/pipeline.py) is used. Since there is no standard "generate" method for diffusion models in Transformers, this custom pipeline handles:
+
+- **Ancestral Sampling**: Iteratively sampling $x_{t-1}$ from $x_t$ using the model's logits.
+- **Confidence-Based Unmasking**: Logic to selectively unmask only the most "confident" tokens at each step.
+- **Semi-Autoregressive Blocks**: A wrapper method that allows generating text beyond the context window by treating the previous generation as a fixed context for the next block.
+
+> **Note:** I found that using random unmasking works better than confidence-based unmasking, but I have to dive deeper into this and improve the confidence-based unmasking procedure.
+
+### 5. Hyperparameter Optimization
+
+To find the optimal balance between noise schedules and learning rates, the project includes an Optuna-based sweep script ([`sweep.py`](sweep.py)) capable of running distributed trials across multiple GPUs.
+
+### 6. Model Training
+
+First, I trained a small model on the `TinyStories` dataset. It was not perfect, but could generate reasonable stories. Then, I scaled up to the `FineWeb` dataset. However, it doesn't generate much coherent text. I returned to debugging and testing on the `TinyStories` dataset but everything seemed okay, probably I just have to find better hyperparameters. In hindsight, I should have performed the sweep instead of training it fully just to see if it works. I will do some sweeping but first I want to implement some benchmarks to not rely only on the loss.
+
+### 7. Supervised Fine-Tuning
+
+I did a test on the `smol-smoltalk` dataset to see if the model would generate coherent responses and it seem to somewhat work, so I continued to work on _sft_ hoping that it would at least work on some conversations. As the model does not have a causal mask, I split the conversations so that the model only sees the previous part and what it has to answer. First, I trained on the full conversation, not just the assistant response. The model learned to generate coherent answers, it also worked with the semi-autoregressive inference mode. However, it got confused many times and asked as a user instead of answering as an assistant. I then used the assistant masks extracted from the chat-template to train only on the assistant answers. That seemed to work better, so I added the `everyday-conversations-llama3.1-2k` and `Nemotron-Instruction-Following-Chat-v1` datasets. When finished training, the model could answer questions reliably. However, it always ended with the `<|im_end|>` token, regardless of the length of its input. With the padding and masks, the model always "sees" the `<|im_end|>` token at the end, so it always generates it at the end, no matter the length of the text. The upside is that you can select the desired answer length, the downside is that you no longer have the semi-autoregressive capabilities. This is something I have to look into.
 
 ## Training
 
@@ -281,7 +342,7 @@ result = pipe(
 
 ---
 
-## 📁 Project Structure
+## Project Structure
 
 ```
 diffusionGPT/
@@ -307,35 +368,8 @@ diffusionGPT/
 
 ---
 
-## ⚙️ Technical Implementation
+## Limitations
 
-### Diffusion Process
-
-The model learns to reverse a corruption process:
-
-1. **Training Time**:
-    - Sample timestep `t ~ Uniform(0, 1)`
-    - Mask proportion `t` of tokens → `input_ids_noisy`
-    - Train model to predict original tokens from `input_ids_noisy`
-
-2. **Inference Time**:
-    - Start with fully masked sequence
-    - Iteratively unmask tokens based on model predictions
-    - Apply Seed Diffusion editing to refine visible tokens
-    - Continue until all tokens are revealed
-
-### Key Components
-
-- **`DiscreteDiffusionCollator`**: Handles training-time corruption
-- **`TextDiffusionPipeline`**: Implements ancestral sampling and generation
-- **`DiffusionTrainer`**: Custom trainer with time-weighted loss
-- **Callbacks**: Curriculum learning, generative evaluation
-
----
-
-## ⚠️ Limitations
-
-- **Semi-autoregressive generation**: Currently the chatbot cannot do semi-autoregressive generation because it always outputs `<im_end>` as the final token because of how I did the sft. I have to figure out how to only train on the assistant answers enabling the model to perform semi-autoregressive generation. (Training on the whole conversation works but the assistant was not that good, though I did not train that much because I thought using only the assistant part was better and later realized the issue).
 - **Factuality**: Like all LLMs, can produce hallucinations. Not optimized for factual retrieval.
 - **Long-range Coherence**: Most effective for short-to-medium conversations. Long-form coherence is an active development area.
 - **Speed vs Quality Trade-off**: Fewer diffusion steps = faster but lower quality. Tuning required for your use case.
@@ -345,11 +379,15 @@ The model learns to reverse a corruption process:
 
 ## Roadmap
 
-- [ ] Figure out how to sft with block generation. Currently it always generates `<im_end>` as the final token and cannot do block generation.
-- [ ] Quantization and optimization for edge devices
-- [ ] Add tool use
-- [ ] Add thinking capability
-- [ ] Advanced editing and infilling capabilities
+- [ ] **Fix Semi-Autoregressive SFT**: Modify training data/masking so the model isn't "forced" to end every sequence with `<|im_end|>`, enabling true block-wise generation for long texts.
+- [ ] **SFT Improvements**: Implement "deletion corruption" logic during the fine-tuning stage.
+- [ ] **Confidence-based sampling**: Improve the current basic implementation of confidence-based sampling.
+- [ ] **Evaluation Suite**: Implement proper benchmarks (beyond loss) to evaluate generation quality quantitatively.
+- [ ] **Hyperparameter Tuning**: Run comprehensive sweeps on `FineWeb` to find the sweet spot for learning rates and noise schedules.
+- [ ] **Future Features**:
+    - [ ] Tool use / Function calling
+    - [ ] "Thinking" capability (Chain of Thought)
+    - [ ] Quantization for edge deployment
 
 ---
 
