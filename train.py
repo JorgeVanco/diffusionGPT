@@ -17,7 +17,8 @@ from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
 from src.trainer_callbacks import TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
 from src.pipeline import TextDiffusionPipeline
 
-torch.set_float32_matmul_precision('high')
+if torch.cuda.is_available():
+    torch.set_float32_matmul_precision('high')
 
 def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     
