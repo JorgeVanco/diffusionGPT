@@ -192,3 +192,31 @@ def get_args(override_args: Optional[Dict[str, Any]] = None) -> tuple[ModelArgum
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
     
     return model_args, data_args, training_args
+
+
+def visualize_stream(generator, clear_terminal: bool = True):
+    """
+    Consumes a generator yielding text and visualizes it in the terminal.
+    
+    Args:
+        generator: An iterator yielding strings (the current state of generation).
+        clear_terminal: Whether to clear the screen between steps.
+    """
+    # ANSI Colors
+    RED = '\033[91m' # For Masks
+    RESET = '\033[0m'
+    
+    import os
+    
+    for step, text in enumerate(generator):
+        if clear_terminal:
+            # Cross-platform clear
+            os.system('cls' if os.name == 'nt' else 'clear')
+        
+        # Highlight <mask> tokens
+        colored_text = text.replace("<mask>", f"{RED}█{RESET}")
+        
+        print(f"Step {step:02d}")
+        print("-" * 40)
+        print(colored_text)
+        print("-" * 40)
