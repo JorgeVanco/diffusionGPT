@@ -1,11 +1,13 @@
 import logging
 import sys
-import structlog
 from typing import Any
+
+import structlog
+
 
 def setup_logging(name: str = "diffusionGPT", log_level: str = "INFO") -> Any:
     """Configures professional logging compatible with cloud & local dev."""
-    
+
     # Configure standard logging to capture library logs (Transformers, etc.)
     logging.basicConfig(
         format="%(message)s",
@@ -22,7 +24,7 @@ def setup_logging(name: str = "diffusionGPT", log_level: str = "INFO") -> Any:
             structlog.processors.StackInfoRenderer(),
             structlog.processors.format_exc_info,
             # Use JSON in production (files), ConsoleRenderer for dev
-            structlog.dev.ConsoleRenderer() 
+            structlog.dev.ConsoleRenderer()
         ],
         logger_factory=structlog.stdlib.LoggerFactory(),
         wrapper_class=structlog.stdlib.BoundLogger,

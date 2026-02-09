@@ -1,5 +1,6 @@
 import chainlit as cl
 from transformers import pipeline
+
 # from src.pipeline import TextDiffusionPipeline
 # Ensure your src folder is accessible or copy the class here
 # from preprocess_chat_dataset import setup_chat_format # If you need this

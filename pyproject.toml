@@ -9,14 +9,44 @@ dependencies = [
     "chainlit>=2.9.6",
     "datasets>=4.1.1",
     "einops>=0.8.1",
+    "hf-xet>=1.1.10",
     "ipython>=9.8.0",
     "matplotlib>=3.10.7",
     "numpy>=2.3.3",
     "optuna>=4.6.0",
     "optuna-dashboard>=0.20.0",
     "scipy>=1.16.2",
+    "structlog>=25.5.0",
     "torch>=2.8.0",
     "tqdm>=4.67.1",
     "transformers[torch]>=4.56.2",
     "wandb>=0.18.0",
 ]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.0.0",
+    "ruff>=0.3.0",
+    "mypy>=1.9.0",
+    "pre-commit>=3.6.0",
+    "structlog>=25.5.0",
+]
+
+[tool.ruff]
+line-length = 100
+target-version = "py311"
+
+[tool.ruff.lint]
+select = [
+    "E",
+    "F",
+    "I",
+    "W",
+    "B",
+    "UP",
+] # E=Error, F=Pyflakes, I=Isort, B=Bugbear (common bugs)
+ignore = ["E501"]
+
+[tool.mypy]
+strict = true
+ignore_missing_imports = true

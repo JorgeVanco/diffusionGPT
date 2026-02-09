@@ -1,6 +1,6 @@
-from .smoltalk import SmolTalkTask
 from .everyday import EverydayConversationsTask
 from .nemotron import NemotronTask
+from .smoltalk import SmolTalkTask
 
 TASK_REGISTRY = {
     "smoltalk": SmolTalkTask,

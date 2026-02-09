@@ -1,8 +1,11 @@
 import os
+
 from datasets import concatenate_datasets
-from src.utils import get_args
+
 from src.data_utils import load_tokenizer
+from src.utils import get_args
 from tasks import TASK_REGISTRY
+
 
 def setup_chat_format(tokenizer):
     if not tokenizer.chat_template:
@@ -24,11 +27,11 @@ def setup_chat_format(tokenizer):
             "<|im_start|>assistant\n"
             "{% endif %}"
         )
-        
+
         # Add special tokens to the vocabulary
         special_tokens = ["<|im_start|>", "<|im_end|>"]
         tokenizer.add_special_tokens({"additional_special_tokens": special_tokens})
-        
+
     return tokenizer
 
 def process_batch(examples, tokenizer):
@@ -37,7 +40,7 @@ def process_batch(examples, tokenizer):
         "attention_mask": [],
         "assistant_masks": []
     }
-    
+
     for conversation in examples["messages"]:
         for i, message in enumerate(conversation):
             if message["role"] == "assistant":
@@ -58,23 +61,23 @@ def process_batch(examples, tokenizer):
 
 if __name__ == "__main__":
     task_names = "everyday,smoltalk,nemotron"
-    
+
     model_args, data_args, training_args = get_args()
-    
+
     tokenizer = load_tokenizer(model_args)
     tokenizer = setup_chat_format(tokenizer)
-    
+
     # 1. Load and Mix Datasets
     task_names = task_names.split(",")
     raw_datasets = []
-    
+
     print(f"Loading tasks: {task_names}")
     for name in task_names:
         name = name.strip()
         if name in TASK_REGISTRY:
             task = TASK_REGISTRY[name](seed=training_args.seed)
             ds = task.load_dataset()
-            
+
             # Ensure only necessary columns are kept to avoid concatenation errors
             ds = ds.select_columns(["messages"])
             raw_datasets.append(ds)
@@ -87,11 +90,11 @@ if __name__ == "__main__":
 
     # Concatenate all loaded datasets
     combined_dataset = concatenate_datasets(raw_datasets)
-    
+
     # Shuffle mixed dataset
     combined_dataset = combined_dataset.shuffle(seed=training_args.seed)
     print(f"Total samples after mixing: {len(combined_dataset)}")
-    
+
     # Split into train and test
     dataset_split = combined_dataset.train_test_split(test_size=1000, seed=training_args.seed)
     print(f"Split created: {len(dataset_split['train'])} train, {len(dataset_split['test'])} test")
@@ -104,7 +107,7 @@ if __name__ == "__main__":
         num_proc=os.cpu_count()
     )
     print(f"Processing complete. {processed_dataset}")
-    
+
     # 3. Save
     processed_dataset.save_to_disk(data_args.load_from_disk)
     print(f"Datasets saved to {data_args.load_from_disk}")

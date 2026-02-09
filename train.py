@@ -1,27 +1,31 @@
-from transformers import (
-    AutoConfig, 
-    set_seed,
-)
-import torch
-from accelerate import Accelerator
-
+import logging
 import os
 import sys
-import logging
 from datetime import datetime
-from typing import Optional, Dict, Any
+from typing import Any
 
-from src.data_utils import load_tokenizer, load_datasets
-from src.utils import get_args
-from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
-from src.trainer_callbacks import TrainingInfoCallback, GenerativeEvalCallback, SeedDiffusionCurriculumCallback
+import torch
+from accelerate import Accelerator
+from transformers import (
+    AutoConfig,
+    set_seed,
+)
+
+from src.data_utils import load_datasets, load_tokenizer
 from src.pipeline import TextDiffusionPipeline
+from src.trainer import DiffusionTrainer, DiscreteDiffusionCollator
+from src.trainer_callbacks import (
+    GenerativeEvalCallback,
+    SeedDiffusionCurriculumCallback,
+    TrainingInfoCallback,
+)
+from src.utils import get_args
 
 if torch.cuda.is_available():
     torch.set_float32_matmul_precision('high')
 
-def main(override_args: Optional[Dict[str, Any]] = None) -> float:
-    
+def main(override_args: dict[str, Any] | None = None) -> float:
+
     model_args, data_args, training_args = get_args(override_args)
 
     # Setup Logging
@@ -32,11 +36,11 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         handlers=[logging.StreamHandler(sys.stdout)],
     )
     set_seed(training_args.seed)
-    
+
     tokenizer = load_tokenizer(model_args)
-    
+
     accelerator = Accelerator()
-    
+
     with accelerator.main_process_first():
         train_dataset, eval_dataset = load_datasets(model_args, data_args, training_args, tokenizer)
 
@@ -53,38 +57,38 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
     config.seq_length = model_args.max_seq_length
     config.mask_token_id = tokenizer.mask_token_id
     config.pad_token_id = tokenizer.pad_token_id # type: ignore
-    
+
     config.use_cache = False
-    
+
     model = AutoModelForMaskedLM.from_config(config)
 
     if training_args.target_param_data_ratio is not None:
         total_params = sum(p.numel() for p in model.parameters())
-        
+
         # 1. Calculate Total Tokens needed (e.g., Chinchilla: 20 * Params)
         total_tokens_needed = total_params * training_args.target_param_data_ratio
-        
+
         # 2. Calculate Effective Batch Size (Batch x Grads x GPUs)
         effective_batch_size = (
             training_args.per_device_train_batch_size * training_args.gradient_accumulation_steps * training_args.world_size
         )
-        
+
         # 3. Calculate Tokens per Step (Batch x SeqLen)
         tokens_per_step = effective_batch_size * model_args.max_seq_length
-        
+
         # 4. Set max_steps
         calculated_steps = int(total_tokens_needed / tokens_per_step)
         training_args.max_steps = calculated_steps
-        
-        print(f"\n🚀 DYNAMIC CONFIGURATION:")
+
+        print("\n🚀 DYNAMIC CONFIGURATION:")
         print(f"• Params: {total_params:,}")
         print(f"• Target Ratio: {training_args.target_param_data_ratio}")
         print(f"• Total Tokens Needed: {total_tokens_needed:,}")
         print(f"• Tokens Per Step: {tokens_per_step:,}")
         print(f"• Setting max_steps to: {calculated_steps:,}\n")
-    
+
     os.environ["WANDB_PROJECT"] = "text-diffusion"
-    
+
     if training_args.auto_naming or not training_args.run_name:
         run_name = f"layers{model_args.num_hidden_layers}_embd{model_args.hidden_size}_seq{model_args.max_seq_length}_diff{training_args.num_diffusion_steps}_lr{training_args.learning_rate}_{datetime.now().strftime('%m%d_%H%M')}"
         training_args.run_name = run_name
@@ -101,7 +105,7 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         max_seq_length=model_args.max_seq_length,
         insertion_corruption=training_args.insertion_corruption,
     )
-    
+
     eval_callback = GenerativeEvalCallback(
         test_prompts=["Once upon a time", "There was a huge dragon"],
         tokenizer=tokenizer,
@@ -111,7 +115,7 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         edit_stage_start=training_args.edit_stage_start,
         anneal_corruption=training_args.anneal_corruption
     )
-    
+
     trainer = DiffusionTrainer(
         model=model,
         args=training_args,
@@ -121,18 +125,18 @@ def main(override_args: Optional[Dict[str, Any]] = None) -> float:
         processing_class=tokenizer,
         callbacks=[TrainingInfoCallback(), eval_callback, seed_diffusion_curriculum_callback],
     )
-    
+
     # Link trainer to callbacks that need it
     eval_callback.trainer = trainer  # Set trainer for logging purposes
     seed_diffusion_curriculum_callback.trainer = trainer  # Set trainer for curriculum callback
-    
+
     # 8. Train & Evaluate
     if training_args.do_train:
         trainer.train(resume_from_checkpoint=training_args.resume_from_checkpoint)
         trainer.save_model()
 
     metrics = trainer.evaluate()
-    
+
     return metrics["eval_loss"]
 
 if __name__ == "__main__":

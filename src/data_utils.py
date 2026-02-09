@@ -1,19 +1,21 @@
-from transformers import AutoTokenizer, PreTrainedTokenizer
-from datasets import load_dataset, DatasetDict, Dataset, load_from_disk, get_dataset_split_names
-from itertools import chain
 import logging
 import os
+from itertools import chain
+
+from datasets import DatasetDict, get_dataset_split_names, load_dataset, load_from_disk
+from transformers import AutoTokenizer, PreTrainedTokenizer
+
 
 def load_tokenizer(model_args) -> PreTrainedTokenizer:
     # Load Tokenizer
     tokenizer = AutoTokenizer.from_pretrained(model_args.tokenizer_name_or_path)
-    
+
     tokenizer.add_special_tokens(model_args.special_tokens)
     tokenizer.add_tokens(["<|delete|>"])
     assert tokenizer.eos_token is not None, "The tokenizer must have an EOS token defined."
     assert tokenizer.mask_token is not None, "The tokenizer must have a MASK token defined."
     assert tokenizer.pad_token is not None, "The tokenizer must have a PAD token defined."
-    
+
     return tokenizer
 
 
@@ -21,35 +23,35 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
     # Load Dataset ------------------------------------------------
     target_train_samples = data_args.max_train_samples
     target_eval_samples = data_args.max_eval_samples if data_args.max_eval_samples else 1000
-    
+
     # Data Processing (Packing / Grouping)
     def tokenize_function(examples) -> AutoTokenizer:
         outputs =  tokenizer(
-            examples["text"], 
+            examples["text"],
             padding=False,       # We pad dynamically in the collator
             truncation=True,     # Truncate to max model length
         )
         outputs["input_ids"] = [ids + [tokenizer.eos_token_id] for ids in outputs["input_ids"]]
         outputs["attention_mask"] = [am + [1] for am in outputs["attention_mask"]]
         return outputs
-    
+
     max_seq_length = model_args.max_seq_length
     def group_texts(examples):
         # Concatenate all texts in this batch
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
         total_length = len(concatenated_examples[list(examples.keys())[0]])
-        
+
         # Drop the small remainder at the end of the batch
         if total_length >= max_seq_length:
             total_length = (total_length // max_seq_length) * max_seq_length
-            
+
         # Split by chunks of max_seq_length
         result = {
             k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
             for k, t in concatenated_examples.items()
         }
         return result
-    
+
     if "~" in str(data_args.load_from_disk):
         data_args.load_from_disk = os.path.expanduser(data_args.load_from_disk)
     if data_args.load_from_disk and os.path.exists(data_args.load_from_disk):
@@ -58,7 +60,7 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         # Process
         # with training_args.main_process_first(desc="tokenizing"):
         #     tokenized = dataset_dict.map(tokenize_function, batched=True, num_proc=os.cpu_count())
-        
+
         # with training_args.main_process_first(desc="grouping"):
         #     lm_datasets = tokenized.map(group_texts, batched=True, batch_size=1000, num_proc=os.cpu_count())
         # train_dataset = lm_datasets["train"]
@@ -81,7 +83,7 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         # Load & Split
         subset = data_args.dataset_subset_name
         raw_datasets = load_dataset(data_args.dataset_name, name=subset)
-        
+
         # Check for validation split
         try:
             splits = get_dataset_split_names(data_args.dataset_name, subset)
@@ -108,11 +110,11 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         # Combine for uniform processing
         dataset_dict = DatasetDict({"train": train_ds, "test": test_ds})
         dataset_dict = dataset_dict.select_columns(["text"])
-        
+
         # Process
         with training_args.main_process_first(desc="tokenizing"):
             tokenized = dataset_dict.map(tokenize_function, batched=True, num_proc=os.cpu_count(), remove_columns=["text"])
-        
+
         with training_args.main_process_first(desc="grouping"):
             lm_datasets = tokenized.map(group_texts, batched=True, batch_size=1000, num_proc=os.cpu_count())
 
@@ -124,11 +126,11 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
     # ----------------------------------------------------------------------------
     else:
         logging.info(f"🌊 Streaming {data_args.dataset_name}...")
-        
+
         raw_stream = load_dataset(
-            data_args.dataset_name, 
-            name=data_args.dataset_subset_name, 
-            split="train", 
+            data_args.dataset_name,
+            name=data_args.dataset_subset_name,
+            split="train",
             streaming=True
         )
 
@@ -136,47 +138,47 @@ def load_datasets(model_args, data_args, training_args, tokenizer):
         eval_stream = raw_stream.take(target_eval_samples)
         train_stream = raw_stream.skip(target_eval_samples)
         train_stream = train_stream.shuffle(seed=training_args.seed, buffer_size=10_000)
-        
+
         # Lazy Processing
         tokenized_train = train_stream.map(tokenize_function, batched=True, remove_columns=["text"])
         tokenized_eval = eval_stream.map(tokenize_function, batched=True, remove_columns=["text"])
-        
+
         train_dataset = tokenized_train.map(group_texts, batched=True, batch_size=1000)
         eval_dataset = tokenized_eval.map(group_texts, batched=True, batch_size=1000)
-        
+
         if target_train_samples is not None:
             train_dataset = train_dataset.take(target_train_samples)
-    
+
     return train_dataset, eval_dataset
 
 def tokenize_and_pack(dataset_dict, tokenizer, max_seq_length: int):
     # Data Processing (Packing / Grouping)
     def tokenize_function(examples) -> AutoTokenizer:
         outputs =  tokenizer(
-            examples["text"], 
+            examples["text"],
             padding=False,       # We pad dynamically in the collator
             truncation=True,     # Truncate to max model length
         )
         outputs["input_ids"] = [ids + [tokenizer.eos_token_id] for ids in outputs["input_ids"]]
         outputs["attention_mask"] = [am + [1] for am in outputs["attention_mask"]]
         return outputs
-    
+
     def group_texts(examples):
         # Concatenate all texts in this batch
         concatenated_examples = {k: list(chain(*examples[k])) for k in examples.keys()}
         total_length = len(concatenated_examples[list(examples.keys())[0]])
-        
+
         # Drop the small remainder at the end of the batch
         if total_length >= max_seq_length:
             total_length = (total_length // max_seq_length) * max_seq_length
-            
+
         # Split by chunks of max_seq_length
         result = {
             k: [t[i : i + max_seq_length] for i in range(0, total_length, max_seq_length)]
             for k, t in concatenated_examples.items()
         }
         return result
-    
+
     if hasattr(dataset_dict, "column_names"):
         if isinstance(dataset_dict.column_names, dict):
             # It's a DatasetDict (train, test, etc.)
@@ -186,10 +188,9 @@ def tokenize_and_pack(dataset_dict, tokenizer, max_seq_length: int):
     else:
         # Fallback for standard DatasetDict
         column_names = dataset_dict["train"].column_names
-    
+
     tokenized = dataset_dict.map(tokenize_function, batched=True, remove_columns=column_names, num_proc=128)
-    
+
     lm_datasets = tokenized.map(group_texts, batched=True, batch_size=1000, num_proc=128)
-    
+
     return lm_datasets
-    

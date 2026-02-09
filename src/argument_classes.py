@@ -1,6 +1,7 @@
 from dataclasses import dataclass, field
-from typing import Optional, Dict
+
 from transformers import TrainingArguments
+
 
 @dataclass
 class DiffusionTrainingArguments(TrainingArguments):
@@ -28,7 +29,7 @@ class DiffusionTrainingArguments(TrainingArguments):
         default=True,
         metadata={"help": "Whether to anneal the corruption probability during the edit stage."}
     )
-    target_param_data_ratio: Optional[int] = field(
+    target_param_data_ratio: int | None = field(
         default=None,
         metadata={"help": "If set, adjusts the number of training samples to achieve the target parameter-to-data ratio."}
     )
@@ -37,11 +38,11 @@ class DiffusionTrainingArguments(TrainingArguments):
         metadata={"help": "If true, applies time-dependent weighting to the loss."}
     )
 
-    
+
 @dataclass
 class ModelArguments:
     model_name_or_path: str = field(
-        default="answerdotai/ModernBERT-base", 
+        default="answerdotai/ModernBERT-base",
         metadata={"help": "Path to pretrained model or model identifier from huggingface.co/models"}
     )
     tokenizer_name_or_path: str = field(
@@ -55,7 +56,7 @@ class ModelArguments:
     hidden_size: int = field(default=256, metadata={"help": "Hidden dimension size"})
     num_hidden_layers: int = field(default=4, metadata={"help": "Number of layers"})
     num_attention_heads: int = field(default=4, metadata={"help": "Number of attention heads"})
-    special_tokens: Optional[Dict[str, str]] = field(
+    special_tokens: dict[str, str] | None = field(
         default_factory=lambda: {"pad_token": "<pad>", "mask_token": "<mask>", "eos_token": "<eos>"},
         metadata={"help": "Dictionary of special tokens to add/override in the tokenizer."}
     )
@@ -66,23 +67,23 @@ class DataArguments:
         default="roneneldan/TinyStories",
         metadata={"help": "The name of the dataset to use (via the datasets library)."}
     )
-    dataset_subset_name: Optional[str] = field(
+    dataset_subset_name: str | None = field(
         default=None,
         metadata={"help": "The subset name of the dataset to use (via the datasets library)."}
     )
     streaming: bool = field(
-        default=False, 
+        default=False,
         metadata={"help": "If True, streams data (good for FineWeb). If False, downloads and caches (good for TinyStories)."}
     )
-    max_train_samples: Optional[int] = field(
+    max_train_samples: int | None = field(
         default=None,
         metadata={"help": "Truncate the number of training examples."}
     )
-    max_eval_samples: Optional[int] = field(
+    max_eval_samples: int | None = field(
         default=None,
         metadata={"help": "Truncate the number of evaluation examples."}
     )
-    load_from_disk: Optional[str] = field(
+    load_from_disk: str | None = field(
         default=None,
         metadata={"help": "If set, loads the dataset from the specified local disk path."}
     )

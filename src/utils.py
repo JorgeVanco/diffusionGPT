@@ -1,11 +1,12 @@
+import sys
+from typing import Any
+
 import torch
 from transformers import (
-    HfArgumentParser, 
+    HfArgumentParser,
 )
-from typing import Optional, Dict, Any
-import sys
 
-from src.argument_classes import DiffusionTrainingArguments, ModelArguments, DataArguments
+from src.argument_classes import DataArguments, DiffusionTrainingArguments, ModelArguments
 
 
 def mask_input_ids_(input_ids: torch.Tensor, mask_token_id: int, mask_prob: torch.Tensor, remasking_mask: torch.Tensor | None = None, generator: torch.Generator | None = None) -> torch.Tensor:
@@ -27,8 +28,8 @@ def mask_input_ids_(input_ids: torch.Tensor, mask_token_id: int, mask_prob: torc
 
     input_ids[mask_matrix] = mask_token_id
     return mask_matrix
-    
-    
+
+
 def _dispatch_table_logging(self, content, step, trainer) -> None:
     # --- WANDB ---
     # Check if WandB is enabled in 'report_to'
@@ -53,11 +54,11 @@ def _dispatch_table_logging(self, content, step, trainer) -> None:
 
     # --- MLFLOW ---
     if "mlflow" in trainer.args.report_to:
-        import mlflow # type: ignore
+        import mlflow  # type: ignore
         # MLFlow usually logs artifacts (files) or text
         for i, (p, g) in enumerate(zip(self.prompts, content)):
             mlflow.log_text(g, f"step_{step}_sample_{i}.txt")
-            
+
 
 def visualize_diffusion_steps(pipeline_output, tokenizer, sample_idx=0):
     """
@@ -75,43 +76,45 @@ def visualize_diffusion_steps(pipeline_output, tokenizer, sample_idx=0):
     GRAY = '\033[90m'
 
     history = pipeline_output["history"]
-    
+
     print(f"\n{GRAY}{'='*20} DIFFUSION PROCESS {'='*20}{RESET}")
-    
+
     # Get the mask ID for comparison
     mask_id = tokenizer.mask_token_id
-    
+
     for step, state_tensor in enumerate(history):
         # state_tensor is (Batch, Seq_Len) -> Get specific sample
         current_ids = state_tensor[sample_idx]
-        
+
         # Decode logic with highlighting
         decoded_tokens = []
         for i, token_id in enumerate(current_ids):
             token_str = tokenizer.decode([token_id])
-            
+
             # 1. It is a MASK
             if token_id == mask_id:
                 decoded_tokens.append(f"{RED}█{RESET}")
-            
+
             # 2. It is a NEWLY revealed token (compare with previous step)
             elif step > 0 and history[step-1][sample_idx][i] == mask_id:
                 decoded_tokens.append(f"{GREEN}{token_str}{RESET}")
-                
+
             # 3. It is a STABLE token (revealed previously)
             else:
                 decoded_tokens.append(token_str)
-        
+
         # Join and print
         full_text = "".join(decoded_tokens)
         print(f"{GRAY}Step {step:02d}:{RESET} {full_text}")
 
     print(f"{GRAY}{'='*60}{RESET}\n")
-    
-    
-import time
+
+
 import os
-from IPython.display import clear_output, display
+import time
+
+from IPython.display import clear_output
+
 
 def animate_diffusion(pipeline_output, tokenizer, interval=0.2, sample_idx=0):
     """
@@ -120,13 +123,13 @@ def animate_diffusion(pipeline_output, tokenizer, interval=0.2, sample_idx=0):
     """
     history = pipeline_output["history"]
     mask_id = tokenizer.mask_token_id
-    
+
     # ANSI Colors
     GREEN = '\033[92m'
     RED = '\033[91m'
     RESET = '\033[0m'
     BOLD = '\033[1m'
-    
+
     print(f"🎬 Starting Diffusion Animation ({len(history)} steps)...\n")
     time.sleep(1)
 
@@ -139,44 +142,44 @@ def animate_diffusion(pipeline_output, tokenizer, interval=0.2, sample_idx=0):
         except NameError:
             # Running in standard terminal
             os.system('cls' if os.name == 'nt' else 'clear')
-        
+
         # 2. Build the colored string
         current_ids = current_state[sample_idx]
         display_tokens = []
-        
+
         for i, token_id in enumerate(current_ids):
             token_str = tokenizer.decode([token_id])
-            
+
             # Logic: Determine color based on change from previous step
             if token_id == mask_id:
                 # It's a mask -> Red Block
                 display_tokens.append(f"{RED}█{RESET}")
-            
+
             elif step > 0 and history[step-1][sample_idx][i] == mask_id:
                 # It WAS a mask, now it's a word -> Green (Pop effect)
                 display_tokens.append(f"{GREEN}{BOLD}{token_str}{RESET}")
-                
+
             else:
                 # Stable word -> Normal
                 display_tokens.append(token_str)
-                
+
         # 3. Print the frame
         full_text = "".join(display_tokens)
         print(f"\n{BOLD}Step {step}/{len(history)-1}{RESET}")
         print("-" * 40)
         print(full_text)
         print("-" * 40)
-        
+
         # 4. Pause
         if step < len(history) - 1:
             time.sleep(interval)
         else:
             print(f"\n{GREEN}✨ Generation Complete!{RESET}")
-            
-            
-def get_args(override_args: Optional[Dict[str, Any]] = None) -> tuple[ModelArguments, DataArguments, DiffusionTrainingArguments]:
+
+
+def get_args(override_args: dict[str, Any] | None = None) -> tuple[ModelArguments, DataArguments, DiffusionTrainingArguments]:
     parser = HfArgumentParser((ModelArguments, DataArguments, DiffusionTrainingArguments)) # type: ignore
-    
+
     if override_args is not None:
         # If called from sweep.py, we inject the dictionary as arguments
         # We need to convert dict to list of strings for parse_args_into_dataclasses if we were using sys.argv,
@@ -190,7 +193,7 @@ def get_args(override_args: Optional[Dict[str, Any]] = None) -> tuple[ModelArgum
     else:
         # Standard CLI parsing
         model_args, data_args, training_args = parser.parse_args_into_dataclasses()
-    
+
     return model_args, data_args, training_args
 
 
@@ -205,17 +208,17 @@ def visualize_stream(generator, clear_terminal: bool = True):
     # ANSI Colors
     RED = '\033[91m' # For Masks
     RESET = '\033[0m'
-    
+
     import os
-    
+
     for step, text in enumerate(generator):
         if clear_terminal:
             # Cross-platform clear
             os.system('cls' if os.name == 'nt' else 'clear')
-        
+
         # Highlight <mask> tokens
         colored_text = text.replace("<mask>", f"{RED}█{RESET}")
-        
+
         print(f"Step {step:02d}")
         print("-" * 40)
         print(colored_text)

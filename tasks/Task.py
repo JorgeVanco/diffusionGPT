@@ -1,5 +1,6 @@
 from datasets import Dataset
 
+
 class Task:
     def __init__(self, seed=42) -> None:
         self.seed = seed

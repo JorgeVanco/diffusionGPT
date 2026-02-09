@@ -8,17 +8,17 @@ class TrainingInfoCallback(TrainerCallback):
         if state.is_world_process_zero:
             model = kwargs.get('model')
             train_dataloader = kwargs.get('train_dataloader')
-            
+
             if model is None:
                 raise ValueError("Model not found in on_train_begin kwargs.")
-            
+
             # Calculate Parameter Count
             total_params = sum(p.numel() for p in model.parameters())
             trainable_params = sum(p.numel() for p in model.parameters() if p.requires_grad)
-            
+
             if args.target_param_data_ratio is not None:
                 args.max_steps = total_params * args.target_param_data_ratio
-                
+
             # # Calculate Dataset Size
             # dataset_size = "Unknown (Streaming)"
             # if train_dataloader:
@@ -62,28 +62,28 @@ class GenerativeEvalCallback(TrainerCallback):
         if state.is_world_process_zero:
             # The Trainer passes the 'model' to this method automatically
             model = kwargs.get("model")
-            
+
             if model is None:
                 print("⚠️ Warning: No model found in on_evaluate kwargs. Skipping generation.")
                 return
-            
+
             # Instantiate the pipeline dynamically using the current model
             pipe = self.pipeline_cls(
-                model=model, 
+                model=model,
                 tokenizer=self.tokenizer,
-                device=model.device 
+                device=model.device
             )
-            
+
             steps = getattr(args, "num_diffusion_steps", 10)
             print(f"Running generative evaluation with {steps} steps...")
             pipe_outputs = pipe(self.prompts, num_steps=steps)
             outputs = [o["decoded_texts"][0] for o in pipe_outputs]
-                    
+
             if self.trainer:
                 _dispatch_table_logging(self, content=outputs, step=state.global_step, trainer=self.trainer)
             else:
                 print("⚠️ Warning: Trainer not set in GenerativeEvalCallback. Skipping logging.")
-            
+
             print("\n" + "="*40)
             print("🧪 EVALUATION COMPLETED")
             print(f"• Step: {state.global_step}")
@@ -103,22 +103,22 @@ class SeedDiffusionCurriculumCallback(TrainerCallback):
     def on_step_begin(self, args, state, control, **kwargs) -> None:
         if self.trainer is None:
             raise ValueError("Trainer not set in SeedDiffusionCurriculumCallback.")
-        
+
         # Check if we are past 80% of training (Two stage curriculum for Robust Diffusion Training - Section 3.1 in Seed Diffusion https://arxiv.org/pdf/2508.02193)
         threshold_step = state.max_steps * self.edit_stage_start
-        
+
         if state.global_step >= threshold_step:
             if hasattr(self.trainer.data_collator, "edit_stage_active"):
                 if not self.trainer.data_collator.edit_stage_active:    # type: ignore
                     print(f"\n[Curriculum] Step {state.global_step}: Switching to Edit-Based Training Stage! 🔀")
                     self.trainer.data_collator.edit_stage_active = True # type: ignore
-            
+
             target_corruption = getattr(args, "corruption_prob", 0.1)
             if self.anneal_corruption:
                 progress = state.global_step / state.max_steps
                 edit_progress = (progress - self.edit_stage_start) / ((1.0 + self.edit_stage_start) / 2 - self.edit_stage_start)
-                
-                
+
+
                 current_prob = min(target_corruption * edit_progress, target_corruption)
                 self.trainer.data_collator.corruption_prob = current_prob # type: ignore
             else:

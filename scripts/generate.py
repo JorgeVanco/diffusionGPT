@@ -1,15 +1,16 @@
-import sys
 import os
-import torch
+import sys
 from dataclasses import dataclass, field
-from transformers import HfArgumentParser, AutoModelForMaskedLM, AutoTokenizer
+
+import torch
+from transformers import AutoModelForMaskedLM, AutoTokenizer, HfArgumentParser
 
 # Add project root to path so we can import src
 sys.path.append(os.path.abspath(os.path.join(os.path.dirname(__file__), "..")))
 
+from src.logger import setup_logging
 from src.pipeline import TextDiffusionPipeline
 from src.utils import animate_diffusion, visualize_stream
-from src.logger import setup_logging
 
 logger = setup_logging()
 
@@ -56,7 +57,7 @@ def main():
         args = parser.parse_args_into_dataclasses()[0]
 
     logger.info(f"🤖 Loading model from {args.model_path}...")
-    
+
     try:
         model = AutoModelForMaskedLM.from_pretrained(args.model_path)
         tokenizer = AutoTokenizer.from_pretrained(args.model_path)
@@ -65,7 +66,7 @@ def main():
         return
 
     pipe = TextDiffusionPipeline(model=model, tokenizer=tokenizer)
-    
+
     # Move model to GPU if available
     if torch.cuda.is_available():
         pipe.model.to("cuda")
@@ -78,14 +79,14 @@ def main():
         messages = [{"role": "user", "content": args.prompt}]
         try:
             final_prompt = tokenizer.apply_chat_template(
-                messages, 
-                tokenize=False, 
+                messages,
+                tokenize=False,
                 add_generation_prompt=True
             )
         except Exception as e:
             logger.error(f"Failed to apply chat template: {e}")
             logger.warning("Falling back to raw prompt.")
-    
+
     logger.info(f"📝 Input Text: '{final_prompt}'")
     logger.info(f"⚙️ Mode: {args.mode}")
 
@@ -113,7 +114,7 @@ def main():
             print("="*40)
 
     # --- Mode: Standard (Fixed Length) ---
-    else: 
+    else:
         if args.visualization == "stream":
             logger.info("🔴 Starting Streaming Generation...")
             generator = pipe.stream_generation(
