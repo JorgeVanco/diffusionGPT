@@ -79,6 +79,17 @@ uv pip install -e .
 pip install -e .
 ```
 
+### Use generate.py script
+
+```bash
+uv run python scripts/generate.py \
+    --model_path JorgeVanco/diffusionGPT \
+    --prompt "Hi!" \
+    --mode semi_autoregressive \
+    --visualization stream \
+    --use_chat_template
+```
+
 ### Basic Usage
 
 ```python
@@ -187,7 +198,8 @@ This two-stage approach significantly improves generation quality and enables th
 ---
 
 ## The Creation Process
-You can also read the process in the [blog post](https://jorgevanco.github.io/blogs/building-diffusiongpt.html). 
+
+You can also read the process in the [blog post](https://jorgevanco.github.io/blogs/building-diffusiongpt.html).
 Building diffusionGPT involved translating theoretical concepts from discrete diffusion papers into a practical, Hugging Face-compatible ecosystem. The development process followed four distinct stages:
 
 ### 1. Architecture Selection
